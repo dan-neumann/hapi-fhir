@@ -107,6 +107,7 @@ public class DropForeignKeyTask extends BaseTableTask<DropForeignKeyTask> {
 				break;
 			case MARIADB_10_1:
 			case POSTGRES_9_4:
+			case MYSQL_8_0:
 			case DERBY_EMBEDDED:
 			case H2_EMBEDDED:
 			case ORACLE_12C:

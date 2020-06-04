@@ -107,6 +107,7 @@ public class DropIndexTask extends BaseTableTask<DropIndexTask> {
 			// Drop constraint
 			switch (theDriverType) {
 				case MYSQL_5_7:
+				case MYSQL_8_0:
 				case MARIADB_10_1:
 					sql.add("alter table " + theTableName + " drop index " + theIndexName);
 					break;
@@ -127,6 +128,7 @@ public class DropIndexTask extends BaseTableTask<DropIndexTask> {
 			// Drop index
 			switch (theDriverType) {
 				case MYSQL_5_7:
+				case MYSQL_8_0:
 				case MARIADB_10_1:
 					sql.add("alter table " + theTableName + " drop index " + theIndexName);
 					break;

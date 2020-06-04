@@ -57,6 +57,7 @@ public class AddIdGeneratorTask extends BaseTask<AddIdGeneratorTask> {
 		switch (getDriverType()) {
 			case MARIADB_10_1:
 			case MYSQL_5_7:
+			case MYSQL_8_0:
 				// These require a separate table
 				if (!tableNames.contains(myGeneratorName)) {
 

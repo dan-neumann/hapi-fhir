@@ -56,6 +56,7 @@ public class AddColumnTask extends BaseTableColumnTypeTask<AddColumnTask> {
 			case DERBY_EMBEDDED:
 			case MARIADB_10_1:
 			case MYSQL_5_7:
+			case MYSQL_8_0:
 			case POSTGRES_9_4:
 				sql = "alter table " + getTableName() + " add column " + getColumnName() + " " + typeStatement;
 				break;

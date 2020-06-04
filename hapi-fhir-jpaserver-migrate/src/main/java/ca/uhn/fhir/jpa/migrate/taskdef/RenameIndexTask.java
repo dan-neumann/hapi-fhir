@@ -110,6 +110,7 @@ public class RenameIndexTask extends BaseTableTask<RenameIndexTask> {
 		// Drop constraint
 		switch (theDriverType) {
 			case MYSQL_5_7:
+			case MYSQL_8_0:
 			case MARIADB_10_1:
 			case DERBY_EMBEDDED:
 				sql.add("rename index " + theOldIndexName + " to " + theNewIndexName);

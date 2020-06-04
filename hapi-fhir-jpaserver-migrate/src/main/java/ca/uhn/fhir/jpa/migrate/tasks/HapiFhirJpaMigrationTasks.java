@@ -50,11 +50,11 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 			.map(FlagEnum::fromCommandLineValue)
 			.collect(Collectors.toSet());
 
-		init330(); // 20180114 - 20180329
-		init340(); // 20180401 - 20180528
-		init350(); // 20180601 - 20180917
-		init360(); // 20180918 - 20181112
-		init400(); // 20190401 - 20190814
+		//init330(); // 20180114 - 20180329
+		//init340(); // 20180401 - 20180528
+		//init350(); // 20180601 - 20180917
+		//init360(); // 20180918 - 20181112
+		//init400(); // 20190401 - 20190814
 		init410(); // 20190815 - 20191014
 		init420(); // 20191015 - present
 	}
@@ -63,7 +63,9 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 		Builder version = forVersion(VersionEnum.V4_2_0);
 
 		// TermValueSetConceptDesignation
+		version.startSectionWithMessage("Processing table: TRM_VALUESET_C_DESIGNATION");
 		version.onTable("TRM_VALUESET_C_DESIGNATION").dropIndex("20200202.1", "IDX_VALUESET_C_DSGNTN_VAL").failureAllowed();
+		version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20200202.2", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000); // Restore proper size as Index is gone now
 		Builder.BuilderWithTableName searchTable = version.onTable("HFJ_SEARCH");
 		searchTable.dropIndex("20200203.1", "IDX_SEARCH_LASTRETURNED");
 		searchTable.dropColumn("20200203.2", "SEARCH_LAST_RETURNED");
@@ -187,8 +189,9 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 		version.onTable("TRM_CONCEPT_DESIG").modifyColumn("20191002.7", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000);
 
 		// TermValueSetConceptDesignation
-		version.startSectionWithMessage("Processing table: TRM_VALUESET_C_DESIGNATION");
-		version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20191002.8", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000);
+		// TODO: Moved up into version 4.2 after drop of related index
+		//version.startSectionWithMessage("Processing table: TRM_VALUESET_C_DESIGNATION");
+		//version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20191002.8", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000);
 
 		// TermConceptProperty
 		version.startSectionWithMessage("Processing table: TRM_CONCEPT_PROPERTY");

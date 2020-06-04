@@ -95,6 +95,7 @@ public class AddTableByColumnTask extends BaseTableTask<AddTableByColumnTask> {
 		switch (getDriverType()) {
 			case MARIADB_10_1:
 			case MYSQL_5_7:
+			case MYSQL_8_0:
 				sb.append("engine=InnoDB");
 				break;
 			case DERBY_EMBEDDED:

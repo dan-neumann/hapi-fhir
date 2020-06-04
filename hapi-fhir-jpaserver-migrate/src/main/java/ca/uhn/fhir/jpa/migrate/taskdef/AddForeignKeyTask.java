@@ -78,6 +78,7 @@ public class AddForeignKeyTask extends BaseTableColumnTask<AddForeignKeyTask> {
 		switch (getDriverType()) {
 			case MARIADB_10_1:
 			case MYSQL_5_7:
+			case MYSQL_8_0:
 				sql = "alter table " + getTableName() + " add constraint " + myConstraintName + " foreign key (" + getColumnName() + ") references " + myForeignTableName + " (" + myForeignColumnName + ")";
 				break;
 			case POSTGRES_9_4:

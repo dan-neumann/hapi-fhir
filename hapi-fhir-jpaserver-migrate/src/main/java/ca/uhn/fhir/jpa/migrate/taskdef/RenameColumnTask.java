@@ -106,6 +106,7 @@ public class RenameColumnTask extends BaseTableTask<RenameColumnTask> {
 			case MYSQL_5_7:
 				sql = "ALTER TABLE " + getTableName() + " CHANGE COLUMN " + myOldName + " TO " + myNewName;
 				break;
+			case MYSQL_8_0:
 			case POSTGRES_9_4:
 				sql = "ALTER TABLE " + getTableName() + " RENAME COLUMN " + myOldName + " TO " + myNewName;
 				break;

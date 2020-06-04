@@ -46,6 +46,7 @@ public enum DriverTypeEnum {
 
 	// Formerly com.mysql.jdbc.Driver
 	MYSQL_5_7("com.mysql.cj.jdbc.Driver", false),
+	MYSQL_8_0("com.mysql.cj.jdbc.Driver", false),
 
 	POSTGRES_9_4("org.postgresql.Driver", false),
 
