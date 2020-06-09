@@ -50,11 +50,11 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 			.map(FlagEnum::fromCommandLineValue)
 			.collect(Collectors.toSet());
 
-		//init330(); // 20180114 - 20180329
-		//init340(); // 20180401 - 20180528
-		//init350(); // 20180601 - 20180917
-		//init360(); // 20180918 - 20181112
-		//init400(); // 20190401 - 20190814
+		init330(); // 20180114 - 20180329
+		init340(); // 20180401 - 20180528
+		init350(); // 20180601 - 20180917
+		init360(); // 20180918 - 20181112
+		init400(); // 20190401 - 20190814
 		init410(); // 20190815 - 20191014
 		init420(); // 20191015 - present
 	}

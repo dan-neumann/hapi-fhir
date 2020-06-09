@@ -105,9 +105,11 @@ public class DropForeignKeyTask extends BaseTableTask<DropForeignKeyTask> {
 				sqls.add("alter table " + theTableName + " drop constraint " + theConstraintName);
 				sqls.add("alter table " + theTableName + " drop index " + theConstraintName);
 				break;
+			case MYSQL_8_0:
+				sqls.add("alter table " + theTableName + " drop foreign key " + theConstraintName);
+				break;
 			case MARIADB_10_1:
 			case POSTGRES_9_4:
-			case MYSQL_8_0:
 			case DERBY_EMBEDDED:
 			case H2_EMBEDDED:
 			case ORACLE_12C:
