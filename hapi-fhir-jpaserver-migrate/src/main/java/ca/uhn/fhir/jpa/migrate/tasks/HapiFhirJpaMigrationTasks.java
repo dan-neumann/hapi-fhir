@@ -65,7 +65,7 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 		// TermValueSetConceptDesignation
 		version.startSectionWithMessage("Processing table: TRM_VALUESET_C_DESIGNATION");
 		version.onTable("TRM_VALUESET_C_DESIGNATION").dropIndex("20200202.1", "IDX_VALUESET_C_DSGNTN_VAL").failureAllowed();
-		version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20200202.2", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000); // Restore proper size as Index is gone now
+		version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20200202.2", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000); // TODO: Restore proper size as Index is gone now
 		Builder.BuilderWithTableName searchTable = version.onTable("HFJ_SEARCH");
 		searchTable.dropIndex("20200203.1", "IDX_SEARCH_LASTRETURNED");
 		searchTable.dropColumn("20200203.2", "SEARCH_LAST_RETURNED");
@@ -189,7 +189,7 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 		version.onTable("TRM_CONCEPT_DESIG").modifyColumn("20191002.7", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000);
 
 		// TermValueSetConceptDesignation
-		// TODO: Moved up into version 4.2 after drop of related index
+		// TODO: Moved up into version 4.2 after drop of related index as it is too big for MySQL 8.0
 		//version.startSectionWithMessage("Processing table: TRM_VALUESET_C_DESIGNATION");
 		//version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20191002.8", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000);
 
