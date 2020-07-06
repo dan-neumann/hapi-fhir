@@ -804,7 +804,7 @@
 			<dependency>
 				<groupId>com.icegreen</groupId>
 				<artifactId>greenmail-spring</artifactId>
-				<version>1.5.10</version>
+				<version>1.5.14</version>
 			</dependency>
 			<dependency>
 				<groupId>com.github.dnault</groupId>
