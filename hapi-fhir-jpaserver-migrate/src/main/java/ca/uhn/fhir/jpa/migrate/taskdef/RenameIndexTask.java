@@ -35,7 +35,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-public class RenameIndexTask extends BaseTableTask<RenameIndexTask> {
+public class RenameIndexTask extends BaseTableTask {
 	private static final Logger ourLog = LoggerFactory.getLogger(RenameIndexTask.class);
 	private String myOldIndexName;
 	private String myNewIndexName;
@@ -112,6 +112,9 @@ public class RenameIndexTask extends BaseTableTask<RenameIndexTask> {
 			case MYSQL_5_7:
 			case MYSQL_8_0:
 			case MARIADB_10_1:
+				// Quote the index names as "PRIMARY" is a reserved word in MySQL
+				sql.add("rename index `" + theOldIndexName + "` to `" + theNewIndexName + "`");
+				break;
 			case DERBY_EMBEDDED:
 				sql.add("rename index " + theOldIndexName + " to " + theNewIndexName);
 				break;

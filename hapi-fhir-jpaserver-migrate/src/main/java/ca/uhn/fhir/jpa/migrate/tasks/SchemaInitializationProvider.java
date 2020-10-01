@@ -37,16 +37,22 @@ import static org.apache.commons.lang3.StringUtils.isBlank;
 
 public class SchemaInitializationProvider implements ISchemaInitializationProvider {
 
-	private final String mySchemaFileClassPath;
+	private String mySchemaFileClassPath;
+
+	private String mySchemaDescription;
 	private final String mySchemaExistsIndicatorTable;
+	private final boolean myCanInitializeSchema;
 
 	/**
 	 * @param theSchemaFileClassPath        pathname to script used to initialize schema
 	 * @param theSchemaExistsIndicatorTable a table name we can use to determine if this schema has already been initialized
+	 * @param theCanInitializeSchema this is a "root" schema initializer that creates the primary tables used by this app
 	 */
-	public SchemaInitializationProvider(String theSchemaFileClassPath, String theSchemaExistsIndicatorTable) {
+	public SchemaInitializationProvider(String theSchemaDescription, String theSchemaFileClassPath, String theSchemaExistsIndicatorTable, boolean theCanInitializeSchema) {
+		mySchemaDescription = theSchemaDescription;
 		mySchemaFileClassPath = theSchemaFileClassPath;
 		mySchemaExistsIndicatorTable = theSchemaExistsIndicatorTable;
+		myCanInitializeSchema = theCanInitializeSchema;
 	}
 
 	@Override
@@ -109,6 +115,27 @@ public class SchemaInitializationProvider implements ISchemaInitializationProvid
 	@Override
 	public String getSchemaExistsIndicatorTable() {
 		return mySchemaExistsIndicatorTable;
+	}
+
+	public SchemaInitializationProvider setSchemaFileClassPath(String theSchemaFileClassPath) {
+		mySchemaFileClassPath = theSchemaFileClassPath;
+		return this;
+	}
+
+	@Override
+	public String getSchemaDescription() {
+		return mySchemaDescription;
+	}
+
+	@Override
+	public SchemaInitializationProvider setSchemaDescription(String theSchemaDescription) {
+		mySchemaDescription = theSchemaDescription;
+		return this;
+	}
+
+	@Override
+	public boolean canInitializeSchema() {
+		return myCanInitializeSchema;
 	}
 }
 

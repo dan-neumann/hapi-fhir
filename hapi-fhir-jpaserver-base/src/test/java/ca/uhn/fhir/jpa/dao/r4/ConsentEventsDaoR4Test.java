@@ -4,8 +4,8 @@ import ca.uhn.fhir.interceptor.api.HookParams;
 import ca.uhn.fhir.interceptor.api.IAnonymousInterceptor;
 import ca.uhn.fhir.interceptor.api.Pointcut;
 import ca.uhn.fhir.interceptor.executor.InterceptorService;
+import ca.uhn.fhir.jpa.api.config.DaoConfig;
 import ca.uhn.fhir.jpa.config.TestR4Config;
-import ca.uhn.fhir.jpa.dao.DaoConfig;
 import ca.uhn.fhir.jpa.entity.Search;
 import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
 import ca.uhn.fhir.rest.api.SortOrderEnum;
@@ -20,14 +20,14 @@ import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.r4.model.IdType;
 import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Patient;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import javax.servlet.ServletException;
 import java.util.ArrayList;
@@ -36,14 +36,16 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static junit.framework.TestCase.assertTrue;
 import static org.apache.commons.lang3.StringUtils.leftPad;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("unchecked")
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {TestR4Config.class})
 public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 
@@ -56,13 +58,14 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 	private List<String> myObservationIdsWithVersions;
 	private List<String> myPatientIdsEvenOnly;
 
-	@After
+	@AfterEach
 	public void after() {
 		myDaoConfig.setSearchPreFetchThresholds(new DaoConfig().getSearchPreFetchThresholds());
+		myDaoConfig.setIndexMissingFields(new DaoConfig().getIndexMissingFields());
 	}
 
 	@Override
-	@Before
+	@BeforeEach
 	public void before() throws ServletException {
 		super.before();
 
@@ -128,14 +131,14 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 		List<String> returnedIdValues = toUnqualifiedVersionlessIdValues(resources);
 		assertEquals(myObservationIdsEvenOnly.subList(0, 10), returnedIdValues);
 		assertEquals(1, hitCount.get());
-		assertEquals("Wrong response from " + outcome.getClass(), myObservationIds.subList(0, 20), interceptedResourceIds);
+		assertEquals(myObservationIds.subList(0, 20), interceptedResourceIds, "Wrong response from " + outcome.getClass());
 
 		// Fetch the next 30 (do cross a fetch boundary)
 		String searchId = outcome.getUuid();
 		outcome = myPagingProvider.retrieveResultList(mySrd, searchId);
 		resources = outcome.getResources(10, 40);
 		returnedIdValues = toUnqualifiedVersionlessIdValues(resources);
-		if (!myObservationIdsEvenOnly.subList(10,25).equals(returnedIdValues)) {
+		if (!myObservationIdsEvenOnly.subList(10, 25).equals(returnedIdValues)) {
 			if (resources.size() != 1) {
 				runInTransaction(() -> {
 					Search search = mySearchEntityDao.findByUuidAndFetchIncludes(searchId).get();
@@ -143,7 +146,7 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 				});
 			}
 		}
-		assertEquals("Wrong response from " + outcome.getClass(), myObservationIdsEvenOnly.subList(10, 25), returnedIdValues);
+		assertEquals(myObservationIdsEvenOnly.subList(10, 25), returnedIdValues, "Wrong response from " + outcome.getClass());
 		assertEquals(2, hitCount.get());
 	}
 
@@ -181,6 +184,8 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 
 	@Test
 	public void testSearchAndBlockSomeOnRevIncludes() {
+		myDaoConfig.setIndexMissingFields(DaoConfig.IndexEnabledEnum.ENABLED);
+
 		create50Observations();
 
 		AtomicInteger hitCount = new AtomicInteger(0);
@@ -205,6 +210,7 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 
 	@Test
 	public void testSearchAndBlockSomeOnRevIncludes_LoadSynchronous() {
+		myDaoConfig.setIndexMissingFields(DaoConfig.IndexEnabledEnum.ENABLED);
 		create50Observations();
 
 		AtomicInteger hitCount = new AtomicInteger(0);
@@ -217,11 +223,14 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 		map.setLoadSynchronous(true);
 		map.setSort(new SortSpec(Observation.SP_IDENTIFIER, SortOrderEnum.ASC));
 		map.addRevInclude(IBaseResource.INCLUDE_ALL);
+
+		myCaptureQueriesListener.clear();
 		IBundleProvider outcome = myPatientDao.search(map, mySrd);
 		ourLog.info("Search UUID: {}", outcome.getUuid());
 
 		// Fetch the first 10 (don't cross a fetch boundary)
 		List<IBaseResource> resources = outcome.getResources(0, 100);
+		myCaptureQueriesListener.logSelectQueriesForCurrentThread();
 		List<String> returnedIdValues = toUnqualifiedVersionlessIdValues(resources);
 		assertEquals(sort(myPatientIdsEvenOnly, myObservationIdsEvenOnly), sort(returnedIdValues));
 		assertEquals(2, hitCount.get());
@@ -316,7 +325,6 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 		ourLog.info("Search UUID: {}", outcome.getUuid());
 
 		// Fetch the first 10 (don't cross a fetch boundary)
-		outcome = myPagingProvider.retrieveResultList(mySrd, outcome.getUuid());
 		List<IBaseResource> resources = outcome.getResources(0, 10);
 		List<String> returnedIdValues = toUnqualifiedVersionlessIdValues(resources);
 		ourLog.info("Returned values: {}", returnedIdValues);
@@ -327,7 +335,7 @@ public class ConsentEventsDaoR4Test extends BaseJpaR4SystemTest {
 		 */
 		assertEquals(1, hitCount.get());
 		assertEquals(myObservationIdsWithVersions.subList(90, myObservationIdsWithVersions.size()), sort(interceptedResourceIds));
-		returnedIdValues.forEach(t-> assertTrue(new IdType(t).getIdPartAsLong() % 2 == 0));
+		returnedIdValues.forEach(t -> assertTrue(new IdType(t).getIdPartAsLong() % 2 == 0));
 
 	}
 

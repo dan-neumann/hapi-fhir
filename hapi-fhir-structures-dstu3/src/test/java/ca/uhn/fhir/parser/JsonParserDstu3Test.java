@@ -24,40 +24,78 @@ import org.hl7.fhir.dstu3.model.Address.AddressUseEnumFactory;
 import org.hl7.fhir.dstu3.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.dstu3.model.Bundle.BundleType;
 import org.hl7.fhir.dstu3.model.CapabilityStatement.UnknownContentCode;
-import org.hl7.fhir.dstu3.model.Enumeration;
 import org.hl7.fhir.dstu3.model.Condition.ConditionVerificationStatus;
 import org.hl7.fhir.dstu3.model.Enumerations.AdministrativeGender;
 import org.hl7.fhir.dstu3.model.Identifier.IdentifierUse;
 import org.hl7.fhir.dstu3.model.Observation.ObservationStatus;
 import org.hl7.fhir.instance.model.api.IIdType;
-import org.hl7.fhir.utilities.xhtml.XhtmlNode;
-import org.junit.*;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.io.IOException;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
 
 import static org.apache.commons.lang3.StringUtils.countMatches;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.stringContainsInOrder;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.nullable;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 public class JsonParserDstu3Test {
 	private static final org.slf4j.Logger ourLog = org.slf4j.LoggerFactory.getLogger(JsonParserDstu3Test.class);
 	private static FhirContext ourCtx = FhirContext.forDstu3();
 
-	@After
+	@AfterEach
 	public void after() {
 		ourCtx.setNarrativeGenerator(null);
 	}
 
+	@Test
+	public void testEncodedResourceWithIncorrectRepresentationOfDecimalTypeToJson() {
+		DecimalType decimalType = new DecimalType();
+		decimalType.setValueAsString(".5");
+		MedicationRequest mr = new MedicationRequest();
+		Dosage dosage = new Dosage();
+		dosage.setDose(new SimpleQuantity()
+			.setValue(decimalType.getValue())
+			.setUnit("{tablet}")
+			.setSystem("http://unitsofmeasure.org")
+			.setCode("{tablet}"));
+		mr.addDosageInstruction(dosage);
+		String encoded = ourCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(mr);
+		ourLog.info(encoded);
+		mr = ourCtx.newJsonParser().parseResource(MedicationRequest.class, encoded);
+		assertEquals(BigDecimal.valueOf(0.5), mr.getDosageInstructionFirstRep().getDoseSimpleQuantity().getValue());
+		assertTrue(encoded.contains("0.5"));
+	}
 
 	/**
 	 * See #563
@@ -72,7 +110,8 @@ public class JsonParserDstu3Test {
 			p.parseResource(input);
 			fail();
 		} catch (DataFormatException e) {
-			assertEquals("Found incorrect type for element subject - Expected OBJECT and found SCALAR (STRING)", e.getMessage());
+			assertEquals("Failed to parse JSON encoded FHIR content: Unexpected character ('=' (code 61)): was expecting a colon to separate field name and value\n" +
+				" at [Source: UNKNOWN; line: 4, column: 18]", e.getMessage());
 		}
 	}
 
@@ -109,8 +148,8 @@ public class JsonParserDstu3Test {
 		fhirPat = parser.parseResource(Patient.class, output);
 
 		List<Extension> extensions = fhirPat.getExtensionsByUrl("x1");
-		Assert.assertEquals(1, extensions.size());
-		Assert.assertEquals(refVal, ((Reference) extensions.get(0).getValue()).getReference());
+		assertEquals(1, extensions.size());
+		assertEquals(refVal, ((Reference) extensions.get(0).getValue()).getReference());
 	}
 
 	/**
@@ -168,7 +207,7 @@ public class JsonParserDstu3Test {
 
 		// Check no NPE if base server not configure
 		newPatient = ourCtx.newJsonParser().parseResource(MyPatientWithCustomUrlExtension.class, new StringReader(parsedPatient));
-		assertNull("myName", newPatient.getPetName().getValue());
+		assertNull(newPatient.getPetName().getValue());
 		assertEquals("myName", ((StringType) newPatient.getExtensionsByUrl("http://www.example.com/petname").get(0).getValue()).getValue());
 	}
 
@@ -488,32 +527,25 @@ public class JsonParserDstu3Test {
 		String enc = ourCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(p);
 		ourLog.info(enc);
 
-		//@formatter:off
-		assertEquals("{\n" +
-			"  \"resourceType\": \"Patient\",\n" +
-			"  \"meta\": {\n" +
-			"    \"security\": [\n" +
-			"      {\n" +
-			"        \"system\": \"SYSTEM1\",\n" +
-			"        \"version\": \"VERSION1\",\n" +
-			"        \"code\": \"CODE1\",\n" +
-			"        \"display\": \"DISPLAY1\"\n" +
-			"      },\n" +
-			"      {\n" +
-			"        \"system\": \"SYSTEM2\",\n" +
-			"        \"version\": \"VERSION2\",\n" +
-			"        \"code\": \"CODE2\",\n" +
-			"        \"display\": \"DISPLAY2\"\n" +
-			"      }\n" +
-			"    ]\n" +
-			"  },\n" +
-			"  \"name\": [\n" +
-			"    {\n" +
-			"      \"family\": \"FAMILY\"\n" +
-			"    }\n" +
-			"  ]\n" +
-			"}", enc.trim());
-		//@formatter:on
+		assertThat(enc.trim(), stringContainsInOrder("{",
+			"  \"resourceType\": \"Patient\",",
+			"  \"meta\": {",
+			"    \"security\": [ {",
+			"      \"system\": \"SYSTEM1\",",
+			"      \"version\": \"VERSION1\",",
+			"      \"code\": \"CODE1\",",
+			"      \"display\": \"DISPLAY1\"",
+			"    }, {",
+			"      \"system\": \"SYSTEM2\",",
+			"      \"version\": \"VERSION2\",",
+			"      \"code\": \"CODE2\",",
+			"      \"display\": \"DISPLAY2\"",
+			"    } ]",
+			"  },",
+			"  \"name\": [ {",
+			"    \"family\": \"FAMILY\"",
+			"  } ]",
+			"}"));
 
 		Patient parsed = ourCtx.newJsonParser().parseResource(Patient.class, enc);
 		List<Coding> gotLabels = parsed.getMeta().getSecurity();
@@ -1401,7 +1433,8 @@ public class JsonParserDstu3Test {
 		String input = "{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.0000000000000001}}";
 		Observation obs = ourCtx.newJsonParser().parseResource(Observation.class, input);
 
-		assertEquals("0.0000000000000001", ((Quantity) obs.getValue()).getValueElement().getValueAsString());
+		DecimalType valueElement = ((Quantity) obs.getValue()).getValueElement();
+		assertEquals("0.0000000000000001", valueElement.getValueAsString());
 
 		String str = ourCtx.newJsonParser().encodeResourceToString(obs);
 		ourLog.info(str);
@@ -1509,7 +1542,7 @@ public class JsonParserDstu3Test {
 		assertEquals("foo", parsed.getValueDateTimeType().getValueAsString());
 
 		ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
-		verify(errorHandler, times(1)).invalidValue(isNull(), eq("foo"), msgCaptor.capture());
+		verify(errorHandler, times(1)).invalidValue(any(), eq("foo"), msgCaptor.capture());
 		assertEquals("Invalid date/time format: \"foo\"", msgCaptor.getValue());
 
 		String encoded = ourCtx.newJsonParser().encodeResourceToString(parsed);
@@ -1519,13 +1552,17 @@ public class JsonParserDstu3Test {
 	/**
 	 * #516
 	 */
-	@Test(expected = DataFormatException.class)
+	@Test
 	public void testInvalidEnumValue() {
-		String res = "{ \"resourceType\": \"ValueSet\", \"url\": \"http://sample/ValueSet/education-levels\", \"version\": \"1\", \"name\": \"Education Levels\", \"status\": \"draft\", \"compose\": { \"include\": [ { \"filter\": [ { \"property\": \"n\", \"op\": \"n\", \"value\": \"365460000\" } ], \"system\": \"http://snomed.info/sct\" } ], \"exclude\": [ { \"concept\": [ { \"code\": \"224298008\" }, { \"code\": \"365460000\" }, { \"code\": \"473462005\" }, { \"code\": \"424587006\" } ], \"system\": \"http://snomed.info/sct\" } ] }, \"description\": \"A selection of Education Levels\", \"text\": { \"status\": \"generated\", \"div\": \"<div xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><h2>Education Levels</h2><tt>http://csiro.au/ValueSet/education-levels</tt><p>A selection of Education Levels</p></div>\" }, \"experimental\": true, \"date\": \"2016-07-26\" }";
-		IParser parser = ourCtx.newJsonParser();
-		parser.setParserErrorHandler(new StrictErrorHandler());
-		parser.parseResource(ValueSet.class, res);
-		fail("DataFormat Invalid attribute exception should be thrown");
+		try {
+			String res = "{ \"resourceType\": \"ValueSet\", \"url\": \"http://sample/ValueSet/education-levels\", \"version\": \"1\", \"name\": \"Education Levels\", \"status\": \"draft\", \"compose\": { \"include\": [ { \"filter\": [ { \"property\": \"n\", \"op\": \"n\", \"value\": \"365460000\" } ], \"system\": \"http://snomed.info/sct\" } ], \"exclude\": [ { \"concept\": [ { \"code\": \"224298008\" }, { \"code\": \"365460000\" }, { \"code\": \"473462005\" }, { \"code\": \"424587006\" } ], \"system\": \"http://snomed.info/sct\" } ] }, \"description\": \"A selection of Education Levels\", \"text\": { \"status\": \"generated\", \"div\": \"<div xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><h2>Education Levels</h2><tt>http://csiro.au/ValueSet/education-levels</tt><p>A selection of Education Levels</p></div>\" }, \"experimental\": true, \"date\": \"2016-07-26\" }";
+			IParser parser = ourCtx.newJsonParser();
+			parser.setParserErrorHandler(new StrictErrorHandler());
+			parser.parseResource(ValueSet.class, res);
+			fail("DataFormat Invalid attribute exception should be thrown");
+		} catch (DataFormatException e) {
+			assertEquals("[element=\"op\"] Invalid attribute value \"n\": Unknown FilterOperator code 'n'", e.getMessage());
+		}
 	}
 
 	@Test
@@ -1541,8 +1578,8 @@ public class JsonParserDstu3Test {
 		assertEquals(null, parsed.getGenderElement().getValueAsString());
 
 		ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
-		verify(errorHandler, times(1)).invalidValue(isNull(), eq(""), msgCaptor.capture());
-		assertEquals("Attribute values must not be empty (\"\")", msgCaptor.getValue());
+		verify(errorHandler, times(1)).invalidValue(any(), eq(""), msgCaptor.capture());
+		assertEquals("Attribute value must not be empty (\"\")", msgCaptor.getValue());
 
 		String encoded = ourCtx.newJsonParser().encodeResourceToString(parsed);
 		assertEquals("{\"resourceType\":\"Patient\"}", encoded);
@@ -1561,7 +1598,7 @@ public class JsonParserDstu3Test {
 		assertEquals("foo", parsed.getGenderElement().getValueAsString());
 
 		ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
-		verify(errorHandler, times(1)).invalidValue(isNull(), eq("foo"), msgCaptor.capture());
+		verify(errorHandler, times(1)).invalidValue(any(), eq("foo"), msgCaptor.capture());
 		assertEquals("Unknown AdministrativeGender code 'foo'", msgCaptor.getValue());
 
 		String encoded = ourCtx.newJsonParser().encodeResourceToString(parsed);
@@ -1646,7 +1683,7 @@ public class JsonParserDstu3Test {
 	}
 
 	@Test
-	@Ignore
+	@Disabled
 	public void testParseAndEncodeBundle() throws Exception {
 		String content = IOUtils.toString(JsonParserDstu3Test.class.getResourceAsStream("/bundle-example.json"), StandardCharsets.UTF_8);
 
@@ -1695,7 +1732,7 @@ public class JsonParserDstu3Test {
 	 * Test for #146
 	 */
 	@Test
-	@Ignore
+	@Disabled
 	public void testParseAndEncodeBundleFromXmlToJson() throws Exception {
 		String content = IOUtils.toString(JsonParserDstu3Test.class.getResourceAsStream("/bundle-example2.xml"), StandardCharsets.UTF_8);
 
@@ -1903,7 +1940,7 @@ public class JsonParserDstu3Test {
 	 * see #144 and #146
 	 */
 	@Test
-	@Ignore
+	@Disabled
 	public void testParseContained() {
 
 		FhirContext c = FhirContext.forDstu2();
@@ -1993,13 +2030,13 @@ public class JsonParserDstu3Test {
 			ourCtx.newJsonParser().parseResource("FOO");
 			fail();
 		} catch (DataFormatException e) {
-			assertEquals("Failed to parse JSON content, error was: Content does not appear to be FHIR JSON, first non-whitespace character was: 'F' (must be '{')", e.getMessage());
+			assertEquals("Failed to parse JSON encoded FHIR content: Content does not appear to be FHIR JSON, first non-whitespace character was: 'F' (must be '{')", e.getMessage());
 		}
 		try {
 			ourCtx.newJsonParser().parseResource("[\"aaa\"]");
 			fail();
 		} catch (DataFormatException e) {
-			assertEquals("Failed to parse JSON content, error was: Content does not appear to be FHIR JSON, first non-whitespace character was: '[' (must be '{')", e.getMessage());
+			assertEquals("Failed to parse JSON encoded FHIR content: Content does not appear to be FHIR JSON, first non-whitespace character was: '[' (must be '{')", e.getMessage());
 		}
 
 		assertEquals(Bundle.class, ourCtx.newJsonParser().parseResource("  {\"resourceType\" : \"Bundle\"}").getClass());
@@ -2221,29 +2258,51 @@ public class JsonParserDstu3Test {
 
 	@Test
 	public void testParseWithPrecision() {
-		String input = "{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.000000000000000100}}";
-		Observation obs = ourCtx.newJsonParser().parseResource(Observation.class, input);
 
-		DecimalType valueElement = ((Quantity) obs.getValue()).getValueElement();
-		assertEquals("0.000000000000000100", valueElement.getValueAsString());
+//		BigDecimal d0 = new BigDecimal("0.1");
+//		BigDecimal d1 = new BigDecimal("0.1000");
+//
+//		ourLog.info("Value: {}", d0);
+//		ourLog.info("Value: {}", d1);
 
-		String str = ourCtx.newJsonParser().encodeResourceToString(obs);
-		ourLog.info(str);
-		assertEquals("{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.000000000000000100}}", str);
-	}
-
-	@Test(expected = DataFormatException.class)
-	public void testParseWithTrailingContent() {
-		String bundle = "{\n" +
-			"  \"resourceType\" : \"Bundle\",\n" +
-			"  \"total\" : 1\n" +
-			"}}";
-
-		ourCtx.newJsonParser().parseResource(Bundle.class, bundle);
+		{
+			String input = "{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.0100}}";
+			Observation obs = ourCtx.newJsonParser().parseResource(Observation.class, input);
+			DecimalType valueElement = ((Quantity) obs.getValue()).getValueElement();
+			assertEquals("0.0100", valueElement.getValueAsString());
+			String str = ourCtx.newJsonParser().encodeResourceToString(obs);
+			ourLog.info(str);
+			assertEquals("{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.0100}}", str);
+		}
+		{
+			String input = "{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.000000000000000100}}";
+			Observation obs = ourCtx.newJsonParser().parseResource(Observation.class, input);
+			DecimalType valueElement = ((Quantity) obs.getValue()).getValueElement();
+			assertEquals("0.000000000000000100", valueElement.getValueAsString());
+			String str = ourCtx.newJsonParser().encodeResourceToString(obs);
+			ourLog.info(str);
+			assertEquals("{\"resourceType\":\"Observation\",\"valueQuantity\":{\"value\":0.000000000000000100}}", str);
+		}
 	}
 
 	@Test
-	@Ignore
+	public void testParseWithTrailingContent() {
+		String bundle = "{\n" +
+			"  \"resourceType\": \"Bundle\",\n" +
+			"  \"total\": 1\n" +
+			"}}";
+
+		try {
+			ourCtx.newJsonParser().parseResource(Bundle.class, bundle);
+			fail();
+		} catch (DataFormatException e) {
+			assertEquals("Failed to parse JSON encoded FHIR content: Unexpected close marker '}': expected ']' (for root starting at [Source: UNKNOWN; line: 1, column: 0])\n" +
+				" at [Source: UNKNOWN; line: 4, column: 3]", e.getMessage());
+		}
+	}
+
+	@Test
+	@Disabled
 	public void testParseWithWrongTypeObjectShouldBeArray() throws Exception {
 		String input = IOUtils.toString(getClass().getResourceAsStream("/invalid_metadata.json"), Charsets.UTF_8);
 		try {
@@ -2306,7 +2365,7 @@ public class JsonParserDstu3Test {
 		IParser parser = ourCtx.newXmlParser().setPrettyPrint(true);
 		String message = parser.encodeResourceToString(report);
 		ourLog.info(message);
-		Assert.assertThat(message, containsString("contained"));
+		assertThat(message, containsString("contained"));
 	}
 
 	/**
@@ -2330,7 +2389,7 @@ public class JsonParserDstu3Test {
 		IParser parser = ourCtx.newXmlParser().setPrettyPrint(true);
 		String message = parser.encodeResourceToString(report);
 		ourLog.info(message);
-		Assert.assertThat(message, containsString("contained"));
+		assertThat(message, containsString("contained"));
 	}
 
 	/**
@@ -2435,7 +2494,7 @@ public class JsonParserDstu3Test {
 		assertEquals(1, containedResource.getMeta().getTag().size());
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void afterClassClearContext() {
 		TestUtil.clearAllStaticFieldsForUnitTest();
 	}

@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.SQLException;
 import java.util.Set;
 
-public class AddColumnTask extends BaseTableColumnTypeTask<AddColumnTask> {
+public class AddColumnTask extends BaseTableColumnTypeTask {
 
 	private static final Logger ourLog = LoggerFactory.getLogger(AddColumnTask.class);
 
@@ -51,12 +51,15 @@ public class AddColumnTask extends BaseTableColumnTypeTask<AddColumnTask> {
 
 		String typeStatement = getTypeStatement();
 
-		String sql = "";
+		String sql;
 		switch (getDriverType()) {
-			case DERBY_EMBEDDED:
-			case MARIADB_10_1:
 			case MYSQL_5_7:
 			case MYSQL_8_0:
+			case MARIADB_10_1:
+				// Quote the column name as "SYSTEM" is a reserved word in MySQL
+				sql = "alter table " + getTableName() + " add column `" + getColumnName() + "` " + typeStatement;
+				break;
+			case DERBY_EMBEDDED:
 			case POSTGRES_9_4:
 				sql = "alter table " + getTableName() + " add column " + getColumnName() + " " + typeStatement;
 				break;

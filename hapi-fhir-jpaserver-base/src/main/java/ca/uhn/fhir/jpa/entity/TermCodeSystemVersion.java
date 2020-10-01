@@ -27,7 +27,19 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 
-import javax.persistence.*;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.FetchType;
+import javax.persistence.ForeignKey;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.OneToMany;
+import javax.persistence.OneToOne;
+import javax.persistence.SequenceGenerator;
+import javax.persistence.Table;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -50,7 +62,7 @@ public class TermCodeSystemVersion implements Serializable {
 	@Column(name = "PID")
 	private Long myId;
 
-	@OneToOne()
+	@OneToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "RES_ID", referencedColumnName = "RES_ID", nullable = false, updatable = false, foreignKey = @ForeignKey(name = "FK_CODESYSVER_RES_ID"))
 	private ResourceTable myResource;
 
@@ -64,7 +76,7 @@ public class TermCodeSystemVersion implements Serializable {
 	 * This was added in HAPI FHIR 3.3.0 and is nullable just to avoid migration
 	 * issued. It should be made non-nullable at some point.
 	 */
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "CODESYSTEM_PID", referencedColumnName = "PID", nullable = true, foreignKey = @ForeignKey(name = "FK_CODESYSVER_CS_ID"))
 	private TermCodeSystem myCodeSystem;
 
@@ -72,7 +84,7 @@ public class TermCodeSystemVersion implements Serializable {
 	private Long myCodeSystemPid;
 
 	@SuppressWarnings("unused")
-	@OneToOne(mappedBy = "myCurrentVersion", optional = true)
+	@OneToOne(mappedBy = "myCurrentVersion", optional = true, fetch = FetchType.LAZY)
 	private TermCodeSystem myCodeSystemHavingThisVersionAsCurrentVersionIfAny;
 
 	@Column(name = "CS_DISPLAY", nullable = true, updatable = false, length = MAX_VERSION_LENGTH)
@@ -124,6 +136,11 @@ public class TermCodeSystemVersion implements Serializable {
 
 	public TermCodeSystemVersion setResource(ResourceTable theResource) {
 		myResource = theResource;
+		return this;
+	}
+
+	public TermCodeSystemVersion setId(Long theId) {
+		myId = theId;
 		return this;
 	}
 

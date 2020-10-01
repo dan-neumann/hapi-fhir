@@ -1,10 +1,19 @@
 package ca.uhn.fhir.jpa.searchparam.extractor;
 
+import ca.uhn.fhir.context.RuntimeSearchParam;
 import ca.uhn.fhir.jpa.model.entity.*;
+import org.hl7.fhir.instance.model.api.IBase;
+import ca.uhn.fhir.jpa.model.entity.BaseResourceIndexedSearchParam;
+import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamDate;
+import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamNumber;
+import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamQuantity;
+import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamString;
+import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamUri;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 
@@ -42,6 +51,8 @@ public interface ISearchParamExtractor {
 
 	SearchParamSet<BaseResourceIndexedSearchParam> extractSearchParamTokens(IBaseResource theResource);
 
+	SearchParamSet<BaseResourceIndexedSearchParam> extractSearchParamTokens(IBaseResource theResource, RuntimeSearchParam theSearchParam);
+
 	SearchParamSet<BaseResourceIndexedSearchParam> extractSearchParamSpecial(IBaseResource theResource);
 
 	SearchParamSet<ResourceIndexedSearchParamUri> extractSearchParamUri(IBaseResource theResource);
@@ -50,6 +61,25 @@ public interface ISearchParamExtractor {
 
 	String[] split(String theExpression);
 
+	List<String> extractParamValuesAsStrings(RuntimeSearchParam theActiveSearchParam, IBaseResource theResource);
+
+	List<IBase> extractValues(String thePaths, IBaseResource theResource);
+
+	String toRootTypeName(IBase nextObject);
+
+	String toTypeName(IBase nextObject);
+
+	PathAndRef extractReferenceLinkFromResource(IBase theValue, String thePath);
+
+	Date extractDateFromResource(IBase theValue, String thePath);
+
+	ResourceIndexedSearchParamToken createSearchParamForCoding(String theResourceType, RuntimeSearchParam theSearchParam, IBase theValue);
+
+	String getDisplayTextForCoding(IBase theValue);
+
+	List<IBase> getCodingsFromCodeableConcept(IBase theValue);
+
+	String getDisplayTextFromCodeableConcept(IBase theValue);
 
 	class SearchParamSet<T> extends HashSet<T> {
 

@@ -20,38 +20,41 @@ package ca.uhn.fhir.jpa.dao.r4;
  * #L%
  */
 
-import ca.uhn.fhir.context.support.IContextValidationSupport;
+import ca.uhn.fhir.context.support.DefaultProfileValidationSupport;
+import ca.uhn.fhir.context.support.IValidationSupport;
+import ca.uhn.fhir.context.support.ValidationSupportContext;
+import ca.uhn.fhir.context.support.ValueSetExpansionOptions;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDaoCodeSystem;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDaoValueSet;
 import ca.uhn.fhir.jpa.dao.BaseHapiFhirResourceDao;
-import ca.uhn.fhir.jpa.dao.IFhirResourceDaoCodeSystem;
-import ca.uhn.fhir.jpa.dao.IFhirResourceDaoValueSet;
 import ca.uhn.fhir.jpa.model.cross.IBasePersistedResource;
 import ca.uhn.fhir.jpa.model.entity.ResourceTable;
+import ca.uhn.fhir.rest.api.server.storage.TransactionDetails;
 import ca.uhn.fhir.jpa.term.api.ITermReadSvc;
-import ca.uhn.fhir.jpa.util.LogicUtil;
 import ca.uhn.fhir.rest.api.server.RequestDetails;
+import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.util.ElementUtil;
 import org.apache.commons.codec.binary.StringUtils;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.instance.model.api.IPrimitiveType;
-import org.hl7.fhir.r4.hapi.ctx.DefaultProfileValidationSupport;
-import org.hl7.fhir.r4.hapi.ctx.HapiWorkerContext;
-import org.hl7.fhir.r4.hapi.ctx.IValidationSupport;
-import org.hl7.fhir.r4.model.*;
-import org.hl7.fhir.r4.model.Enumerations.PublicationStatus;
+import org.hl7.fhir.r4.model.CodeSystem;
+import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.IntegerType;
+import org.hl7.fhir.r4.model.ValueSet;
 import org.hl7.fhir.r4.model.ValueSet.ConceptSetComponent;
 import org.hl7.fhir.r4.model.ValueSet.ConceptSetFilterComponent;
 import org.hl7.fhir.r4.model.ValueSet.FilterOperator;
 import org.hl7.fhir.r4.model.ValueSet.ValueSetExpansionContainsComponent;
-import org.hl7.fhir.r4.terminologies.ValueSetExpander.ValueSetExpansionOutcome;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
+import static ca.uhn.fhir.jpa.dao.FhirResourceDaoValueSetDstu2.toStringOrNull;
+import static ca.uhn.fhir.jpa.dao.dstu3.FhirResourceDaoValueSetDstu3.vsValidateCodeOptions;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
@@ -64,15 +67,14 @@ public class FhirResourceDaoValueSetR4 extends BaseHapiFhirResourceDao<ValueSet>
 	private DefaultProfileValidationSupport myDefaultProfileValidationSupport;
 
 	private IValidationSupport myValidationSupport;
+	@Autowired
+	private IFhirResourceDaoCodeSystem<CodeSystem, Coding, CodeableConcept> myCodeSystemDao;
 
 	@Override
 	public void start() {
 		super.start();
-		myValidationSupport = getApplicationContext().getBean(IValidationSupport.class,"myJpaValidationSupportChainR4" );
+		myValidationSupport = getApplicationContext().getBean(IValidationSupport.class, "myJpaValidationSupportChain");
 	}
-
-	@Autowired
-	private IFhirResourceDaoCodeSystem<CodeSystem, Coding, CodeableConcept> myCodeSystemDao;
 
 	@Override
 	public ValueSet expand(IIdType theId, String theFilter, RequestDetails theRequestDetails) {
@@ -87,62 +89,19 @@ public class FhirResourceDaoValueSetR4 extends BaseHapiFhirResourceDao<ValueSet>
 	}
 
 	private ValueSet doExpand(ValueSet theSource) {
-
-		/*
-		 * If all of the code systems are supported by the HAPI FHIR terminology service, let's
-		 * use that as it's more efficient.
-		 */
-
-		boolean allSystemsAreSuppportedByTerminologyService = true;
-		for (ConceptSetComponent next : theSource.getCompose().getInclude()) {
-			if (!isBlank(next.getSystem()) && !myTerminologySvc.supportsSystem(next.getSystem())) {
-				allSystemsAreSuppportedByTerminologyService = false;
-			}
-		}
-		for (ConceptSetComponent next : theSource.getCompose().getExclude()) {
-			if (!isBlank(next.getSystem()) && !myTerminologySvc.supportsSystem(next.getSystem())) {
-				allSystemsAreSuppportedByTerminologyService = false;
-			}
-		}
-		if (allSystemsAreSuppportedByTerminologyService) {
-			return myTerminologySvc.expandValueSetInMemory(theSource, null);
-		}
-
-		HapiWorkerContext workerContext = new HapiWorkerContext(getContext(), myValidationSupport);
-
-		ValueSetExpansionOutcome outcome = workerContext.expand(theSource, null);
-
-		ValueSet retVal = outcome.getValueset();
-		retVal.setStatus(PublicationStatus.ACTIVE);
-
-		return retVal;
+		IValidationSupport.ValueSetExpansionOutcome retVal = myValidationSupport.expandValueSet(new ValidationSupportContext(myValidationSupport), null, theSource);
+		validateHaveExpansionOrThrowInternalErrorException(retVal);
+		return (ValueSet) retVal.getValueSet();
 
 	}
 
 	private ValueSet doExpand(ValueSet theSource, int theOffset, int theCount) {
-		boolean allSystemsAreSuppportedByTerminologyService = true;
-		for (ConceptSetComponent next : theSource.getCompose().getInclude()) {
-			if (!isBlank(next.getSystem()) && !myTerminologySvc.supportsSystem(next.getSystem())) {
-				allSystemsAreSuppportedByTerminologyService = false;
-			}
-		}
-		for (ConceptSetComponent next : theSource.getCompose().getExclude()) {
-			if (!isBlank(next.getSystem()) && !myTerminologySvc.supportsSystem(next.getSystem())) {
-				allSystemsAreSuppportedByTerminologyService = false;
-			}
-		}
-		if (allSystemsAreSuppportedByTerminologyService) {
-			return myTerminologySvc.expandValueSet(theSource, theOffset, theCount);
-		}
-
-		HapiWorkerContext workerContext = new HapiWorkerContext(getContext(), myValidationSupport);
-
-		ValueSetExpansionOutcome outcome = workerContext.expand(theSource, null);
-
-		ValueSet retVal = outcome.getValueset();
-		retVal.setStatus(PublicationStatus.ACTIVE);
-
-		return retVal;
+		ValueSetExpansionOptions options = new ValueSetExpansionOptions()
+			.setOffset(theOffset)
+			.setCount(theCount);
+		IValidationSupport.ValueSetExpansionOutcome retVal = myValidationSupport.expandValueSet(new ValidationSupportContext(myValidationSupport), options, theSource);
+		validateHaveExpansionOrThrowInternalErrorException(retVal);
+		return (ValueSet) retVal.getValueSet();
 	}
 
 	@Override
@@ -283,108 +242,11 @@ public class FhirResourceDaoValueSetR4 extends BaseHapiFhirResourceDao<ValueSet>
 	}
 
 	@Override
-	public ValidateCodeResult validateCode(IPrimitiveType<String> theValueSetIdentifier, IIdType theId, IPrimitiveType<String> theCode,
-			IPrimitiveType<String> theSystem, IPrimitiveType<String> theDisplay, Coding theCoding,
-			CodeableConcept theCodeableConcept, RequestDetails theRequestDetails) {
+	public IValidationSupport.CodeValidationResult validateCode(IPrimitiveType<String> theValueSetIdentifier, IIdType theId, IPrimitiveType<String> theCode,
+																					IPrimitiveType<String> theSystem, IPrimitiveType<String> theDisplay, Coding theCoding,
+																					CodeableConcept theCodeableConcept, RequestDetails theRequestDetails) {
 
-		List<IIdType> valueSetIds = Collections.emptyList();
-
-		boolean haveCodeableConcept = theCodeableConcept != null && theCodeableConcept.getCoding().size() > 0;
-		boolean haveCoding = theCoding != null && !theCoding.isEmpty();
-		boolean haveCode = theCode != null && !theCode.isEmpty();
-
-		if (!haveCodeableConcept && !haveCoding && !haveCode) {
-			throw new InvalidRequestException("No code, coding, or codeableConcept provided to validate");
-		}
-		if (!LogicUtil.multiXor(haveCodeableConcept, haveCoding, haveCode)) {
-			throw new InvalidRequestException("$validate-code can only validate (system AND code) OR (coding) OR (codeableConcept)");
-		}
-
-		boolean haveIdentifierParam = theValueSetIdentifier != null && !theValueSetIdentifier.isEmpty();
-		ValueSet vs = null;
-		boolean isBuiltInValueSet = false;
-		if (theId != null) {
-			vs = read(theId, theRequestDetails);
-		} else if (haveIdentifierParam) {
-			vs = myDefaultProfileValidationSupport.fetchValueSet(getContext(), theValueSetIdentifier.getValue());
-			if (vs == null) {
-				vs = myValidationSupport.fetchValueSet(getContext(), theValueSetIdentifier.getValue());
-				if (vs == null) {
-					throw new InvalidRequestException("Unknown ValueSet identifier: " + theValueSetIdentifier.getValue());
-				}
-			} else {
-				isBuiltInValueSet = true;
-			}
-		} else {
-			if (theCode == null || theCode.isEmpty()) {
-				throw new InvalidRequestException("Either ValueSet ID or ValueSet identifier or system and code must be provided. Unable to validate.");
-			}
-			// String code = theCode.getValue();
-			// String system = toStringOrNull(theSystem);
-			IContextValidationSupport.LookupCodeResult result = myCodeSystemDao.lookupCode(theCode, theSystem, null, null);
-			if (result.isFound()) {
-				ValidateCodeResult retVal = new ValidateCodeResult(true, "Found code", result.getCodeDisplay());
-				return retVal;
-			}
-		}
-
-		if (vs != null) {
-			ValidateCodeResult result;
-			if (myDaoConfig.isPreExpandValueSets() && !isBuiltInValueSet && myTerminologySvc.isValueSetPreExpandedForCodeValidation(vs)) {
-				result = myTerminologySvc.validateCodeIsInPreExpandedValueSet(vs, toStringOrNull(theSystem), toStringOrNull(theCode), toStringOrNull(theDisplay), theCoding, theCodeableConcept);
-			} else {
-				ValueSet expansion = doExpand(vs);
-				List<ValueSetExpansionContainsComponent> contains = expansion.getExpansion().getContains();
-				result = validateCodeIsInContains(contains, toStringOrNull(theSystem), toStringOrNull(theCode), theCoding, theCodeableConcept);
-			}
-			if (result != null) {
-				if (theDisplay != null && isNotBlank(theDisplay.getValue()) && isNotBlank(result.getDisplay())) {
-					if (!theDisplay.getValue().equals(result.getDisplay())) {
-						return new ValidateCodeResult(false, "Display for code does not match", result.getDisplay());
-					}
-				}
-				return result;
-			}
-		}
-
-		return new ValidateCodeResult(false, "Code not found", null);
-
-	}
-
-	private String toStringOrNull(IPrimitiveType<String> thePrimitive) {
-		return thePrimitive != null ? thePrimitive.getValue() : null;
-	}
-
-	private ValidateCodeResult validateCodeIsInContains(List<ValueSetExpansionContainsComponent> contains, String theSystem, String theCode,
-			Coding theCoding, CodeableConcept theCodeableConcept) {
-		for (ValueSetExpansionContainsComponent nextCode : contains) {
-			ValidateCodeResult result = validateCodeIsInContains(nextCode.getContains(), theSystem, theCode, theCoding, theCodeableConcept);
-			if (result != null) {
-				return result;
-			}
-
-			String system = nextCode.getSystem();
-			String code = nextCode.getCode();
-
-			if (isNotBlank(theCode)) {
-				if (theCode.equals(code) && (isBlank(theSystem) || theSystem.equals(system))) {
-					return new ValidateCodeResult(true, "Validation succeeded", nextCode.getDisplay());
-				}
-			} else if (theCoding != null) {
-				if (StringUtils.equals(system, theCoding.getSystem()) && StringUtils.equals(code, theCoding.getCode())) {
-					return new ValidateCodeResult(true, "Validation succeeded", nextCode.getDisplay());
-				}
-			} else {
-				for (Coding next : theCodeableConcept.getCoding()) {
-					if (StringUtils.equals(system, next.getSystem()) && StringUtils.equals(code, next.getCode())) {
-						return new ValidateCodeResult(true, "Validation succeeded", nextCode.getDisplay());
-					}
-				}
-			}
-
-		}
-
-		return null;
+		return myTerminologySvc.validateCode(vsValidateCodeOptions(), theId, toStringOrNull(theValueSetIdentifier), toStringOrNull(theSystem), toStringOrNull(theCode), toStringOrNull(theDisplay), theCoding, theCodeableConcept);
 	}
 
 	@Override
@@ -394,8 +256,8 @@ public class FhirResourceDaoValueSetR4 extends BaseHapiFhirResourceDao<ValueSet>
 
 	@Override
 	public ResourceTable updateEntity(RequestDetails theRequestDetails, IBaseResource theResource, IBasePersistedResource theEntity, Date theDeletedTimestampOrNull, boolean thePerformIndexing,
-												 boolean theUpdateVersion, Date theUpdateTime, boolean theForceUpdate, boolean theCreateNewHistoryEntry) {
-		ResourceTable retVal = super.updateEntity(theRequestDetails, theResource, theEntity, theDeletedTimestampOrNull, thePerformIndexing, theUpdateVersion, theUpdateTime, theForceUpdate, theCreateNewHistoryEntry);
+												 boolean theUpdateVersion, TransactionDetails theTransactionDetails, boolean theForceUpdate, boolean theCreateNewHistoryEntry) {
+		ResourceTable retVal = super.updateEntity(theRequestDetails, theResource, theEntity, theDeletedTimestampOrNull, thePerformIndexing, theUpdateVersion, theTransactionDetails, theForceUpdate, theCreateNewHistoryEntry);
 
 		if (myDaoConfig.isPreExpandValueSets() && !retVal.isUnchangedInCurrentOperation()) {
 			if (retVal.getDeleted() == null) {
@@ -407,6 +269,16 @@ public class FhirResourceDaoValueSetR4 extends BaseHapiFhirResourceDao<ValueSet>
 		}
 
 		return retVal;
+	}
+
+	public static void validateHaveExpansionOrThrowInternalErrorException(IValidationSupport.ValueSetExpansionOutcome theRetVal) {
+		if (theRetVal != null && theRetVal.getValueSet() == null) {
+			throw new InternalErrorException("Unable to expand ValueSet: " + theRetVal.getError());
+		}
+
+		if (theRetVal == null) {
+			throw new InternalErrorException("Unable to expand ValueSet");
+		}
 	}
 
 

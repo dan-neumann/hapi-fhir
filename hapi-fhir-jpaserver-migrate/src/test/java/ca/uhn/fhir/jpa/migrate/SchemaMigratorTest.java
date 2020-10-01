@@ -7,28 +7,39 @@ import ca.uhn.fhir.jpa.migrate.taskdef.BaseTest;
 import com.google.common.collect.ImmutableList;
 import org.flywaydb.core.api.FlywayException;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.annotation.Nonnull;
 import java.sql.SQLException;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static org.hamcrest.CoreMatchers.containsString;
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.startsWith;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.endsWith;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class SchemaMigratorTest extends BaseTest {
 	private static final org.slf4j.Logger ourLog = org.slf4j.LoggerFactory.getLogger(SchemaMigratorTest.class);
 
-	@Test
-	public void testMigrationRequired() {
+
+	@ParameterizedTest(name = "{index}: {0}")
+	@MethodSource("data")
+	public void testMigrationRequired(Supplier<TestDatabaseDetails> theTestDatabaseDetails) {
+		before(theTestDatabaseDetails);
+
 		SchemaMigrator schemaMigrator = createTableMigrator();
 
 		try {
 			schemaMigrator.validate();
 			fail();
 		} catch (ConfigurationException e) {
-			assertEquals("The database schema for " + getUrl() + " is out of date.  Current database schema version is unknown.  Schema version required by application is 1.1.  Please run the database migrator.", e.getMessage());
+			assertThat(e.getMessage(), startsWith("The database schema for "));
+			assertThat(e.getMessage(), endsWith(" is out of date.  Current database schema version is unknown.  Schema version required by application is 1.1.  Please run the database migrator."));
 		}
 
 		schemaMigrator.migrate();
@@ -37,8 +48,11 @@ public class SchemaMigratorTest extends BaseTest {
 	}
 
 
-	@Test
-	public void testRepairFailedMigration() {
+	@ParameterizedTest(name = "{index}: {0}")
+	@MethodSource("data")
+	public void testRepairFailedMigration(Supplier<TestDatabaseDetails> theTestDatabaseDetails) {
+		before(theTestDatabaseDetails);
+
 		SchemaMigrator schemaMigrator = createSchemaMigrator("SOMETABLE", "create fable SOMETABLE (PID bigint not null, TEXTCOL varchar(255))", "1");
 		try {
 			schemaMigrator.migrate();
@@ -50,12 +64,15 @@ public class SchemaMigratorTest extends BaseTest {
 		schemaMigrator.migrate();
 	}
 
-	@Test
-	public void testOutOfOrderMigration() {
+	@ParameterizedTest(name = "{index}: {0}")
+	@MethodSource("data")
+	public void testOutOfOrderMigration(Supplier<TestDatabaseDetails> theTestDatabaseDetails) {
+		before(theTestDatabaseDetails);
+
 		SchemaMigrator schemaMigrator = createSchemaMigrator("SOMETABLE", "create table SOMETABLE (PID bigint not null, TEXTCOL varchar(255))", "2");
 		schemaMigrator.migrate();
 
-		schemaMigrator = createSchemaMigrator("SOMETABLE" ,"create table SOMEOTHERTABLE (PID bigint not null, TEXTCOL varchar(255))", "1");
+		schemaMigrator = createSchemaMigrator("SOMETABLE", "create table SOMEOTHERTABLE (PID bigint not null, TEXTCOL varchar(255))", "1");
 
 		try {
 			schemaMigrator.migrate();
@@ -67,40 +84,46 @@ public class SchemaMigratorTest extends BaseTest {
 		schemaMigrator.migrate();
 	}
 
-	@Test
-	public void testSkipSchemaVersion() throws SQLException {
+	@ParameterizedTest(name = "{index}: {0}")
+	@MethodSource("data")
+	public void testSkipSchemaVersion(Supplier<TestDatabaseDetails> theTestDatabaseDetails) throws SQLException {
+		before(theTestDatabaseDetails);
+
 		AddTableRawSqlTask taskA = new AddTableRawSqlTask("V4_1_0", "20191214.1");
 		taskA.setTableName("SOMETABLE_A");
-		taskA.addSql(DriverTypeEnum.H2_EMBEDDED, "create table SOMETABLE_A (PID bigint not null, TEXTCOL varchar(255))");
+		taskA.addSql(getDriverType(), "create table SOMETABLE_A (PID bigint not null, TEXTCOL varchar(255))");
 
 		AddTableRawSqlTask taskB = new AddTableRawSqlTask("V4_1_0", "20191214.2");
 		taskB.setTableName("SOMETABLE_B");
-		taskB.addSql(DriverTypeEnum.H2_EMBEDDED, "create table SOMETABLE_B (PID bigint not null, TEXTCOL varchar(255))");
+		taskB.addSql(getDriverType(), "create table SOMETABLE_B (PID bigint not null, TEXTCOL varchar(255))");
 
 		AddTableRawSqlTask taskC = new AddTableRawSqlTask("V4_1_0", "20191214.3");
 		taskC.setTableName("SOMETABLE_C");
-		taskC.addSql(DriverTypeEnum.H2_EMBEDDED, "create table SOMETABLE_C (PID bigint not null, TEXTCOL varchar(255))");
+		taskC.addSql(getDriverType(), "create table SOMETABLE_C (PID bigint not null, TEXTCOL varchar(255))");
 
 		AddTableRawSqlTask taskD = new AddTableRawSqlTask("V4_1_0", "20191214.4");
 		taskD.setTableName("SOMETABLE_D");
-		taskD.addSql(DriverTypeEnum.H2_EMBEDDED, "create table SOMETABLE_D (PID bigint not null, TEXTCOL varchar(255))");
+		taskD.addSql(getDriverType(), "create table SOMETABLE_D (PID bigint not null, TEXTCOL varchar(255))");
 
 		ImmutableList<BaseTask> taskList = ImmutableList.of(taskA, taskB, taskC, taskD);
 		MigrationTaskSkipper.setDoNothingOnSkippedTasks(taskList, "4_1_0.20191214.2, 4_1_0.20191214.4");
-		SchemaMigrator schemaMigrator = new SchemaMigrator(SchemaMigrator.HAPI_FHIR_MIGRATION_TABLENAME, getDataSource(), new Properties(), taskList);
-		schemaMigrator.setDriverType(DriverTypeEnum.H2_EMBEDDED);
+		SchemaMigrator schemaMigrator = new SchemaMigrator(getUrl(), SchemaMigrator.HAPI_FHIR_MIGRATION_TABLENAME, getDataSource(), new Properties(), taskList);
+		schemaMigrator.setDriverType(getDriverType());
 
 		schemaMigrator.migrate();
 
-		DriverTypeEnum.ConnectionProperties connectionProperties = DriverTypeEnum.H2_EMBEDDED.newConnectionProperties(getDataSource().getUrl(), getDataSource().getUsername(), getDataSource().getPassword());
+		DriverTypeEnum.ConnectionProperties connectionProperties = super.getDriverType().newConnectionProperties(getDataSource().getUrl(), getDataSource().getUsername(), getDataSource().getPassword());
 		Set<String> tableNames = JdbcUtils.getTableNames(connectionProperties);
 		assertThat(tableNames, Matchers.containsInAnyOrder("SOMETABLE_A", "SOMETABLE_C"));
 	}
 
-	@Test
-	public void testMigrationRequiredNoFlyway() throws SQLException {
+	@ParameterizedTest(name = "{index}: {0}")
+	@MethodSource("data")
+	public void testMigrationRequiredNoFlyway(Supplier<TestDatabaseDetails> theTestDatabaseDetails) throws SQLException {
+		before(theTestDatabaseDetails);
+
 		SchemaMigrator schemaMigrator = createTableMigrator();
-		schemaMigrator.setDriverType(DriverTypeEnum.H2_EMBEDDED);
+		schemaMigrator.setDriverType(getDriverType());
 		schemaMigrator.setDontUseFlyway(true);
 
 		// Validate shouldn't fail if we aren't using Flyway
@@ -110,7 +133,7 @@ public class SchemaMigratorTest extends BaseTest {
 
 		schemaMigrator.validate();
 
-		DriverTypeEnum.ConnectionProperties connectionProperties = DriverTypeEnum.H2_EMBEDDED.newConnectionProperties(getDataSource().getUrl(), getDataSource().getUsername(), getDataSource().getPassword());
+		DriverTypeEnum.ConnectionProperties connectionProperties = getDriverType().newConnectionProperties(getDataSource().getUrl(), getDataSource().getUsername(), getDataSource().getPassword());
 		Set<String> tableNames = JdbcUtils.getTableNames(connectionProperties);
 		assertThat(tableNames, Matchers.contains("SOMETABLE"));
 
@@ -125,9 +148,9 @@ public class SchemaMigratorTest extends BaseTest {
 	private SchemaMigrator createSchemaMigrator(String theTableName, String theSql, String theSchemaVersion) {
 		AddTableRawSqlTask task = new AddTableRawSqlTask("1", theSchemaVersion);
 		task.setTableName(theTableName);
-		task.addSql(DriverTypeEnum.H2_EMBEDDED, theSql);
-		SchemaMigrator retval = new SchemaMigrator(SchemaMigrator.HAPI_FHIR_MIGRATION_TABLENAME, getDataSource(), new Properties(), ImmutableList.of(task));
-		retval.setDriverType(DriverTypeEnum.H2_EMBEDDED);
+		task.addSql(getDriverType(), theSql);
+		SchemaMigrator retval = new SchemaMigrator(getUrl(), SchemaMigrator.HAPI_FHIR_MIGRATION_TABLENAME, getDataSource(), new Properties(), ImmutableList.of(task));
+		retval.setDriverType(getDriverType());
 		return retval;
 	}
 }

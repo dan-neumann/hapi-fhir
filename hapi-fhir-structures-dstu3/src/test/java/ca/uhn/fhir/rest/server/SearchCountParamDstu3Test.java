@@ -20,20 +20,20 @@ import org.eclipse.jetty.servlet.ServletHolder;
 import org.hl7.fhir.dstu3.model.HumanName;
 import org.hl7.fhir.dstu3.model.Patient;
 import org.hl7.fhir.instance.model.api.IBaseResource;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.stringContainsInOrder;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SearchCountParamDstu3Test {
 
@@ -45,7 +45,7 @@ public class SearchCountParamDstu3Test {
 	private static String ourLastMethod;
 	private static Integer ourLastParam;
 
-	@Before
+	@BeforeEach
 	public void before() {
 		ourLastMethod = null;
 		ourLastParam = null;
@@ -112,7 +112,6 @@ public class SearchCountParamDstu3Test {
 			assertEquals("searchWithNoCountParam", ourLastMethod);
 			assertEquals(null, ourLastParam);
 
-			//@formatter:off
 			assertThat(responseContent, stringContainsInOrder(
 				"<link>",
 				"<relation value=\"self\"/>",
@@ -122,7 +121,6 @@ public class SearchCountParamDstu3Test {
 				"<relation value=\"next\"/>",
 				"<url value=\"http://localhost:" + ourPort + "?_getpages=", "&amp;_getpagesoffset=2&amp;_count=2&amp;_bundletype=searchset\"/>",
 				"</link>"));
-			//@formatter:on
 
 		} finally {
 			IOUtils.closeQuietly(status.getEntity().getContent());
@@ -170,13 +168,13 @@ public class SearchCountParamDstu3Test {
 
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void afterClassClearContext() throws Exception {
 		JettyUtil.closeServer(ourServer);
 		TestUtil.clearAllStaticFieldsForUnitTest();
 	}
 
-	@BeforeClass
+	@BeforeAll
 	public static void beforeClass() throws Exception {
 		ourServer = new Server(0);
 

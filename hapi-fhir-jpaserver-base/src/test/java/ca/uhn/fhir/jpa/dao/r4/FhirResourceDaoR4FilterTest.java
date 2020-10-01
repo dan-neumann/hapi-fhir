@@ -1,39 +1,41 @@
 package ca.uhn.fhir.jpa.dao.r4;
 
-import ca.uhn.fhir.jpa.dao.DaoConfig;
+import ca.uhn.fhir.jpa.api.config.DaoConfig;
 import ca.uhn.fhir.jpa.searchparam.SearchParameterMap;
 import ca.uhn.fhir.jpa.util.TestUtil;
 import ca.uhn.fhir.rest.api.Constants;
 import ca.uhn.fhir.rest.api.server.IBundleProvider;
 import ca.uhn.fhir.rest.param.StringParam;
-import ca.uhn.fhir.rest.param.UriParam;
-import ca.uhn.fhir.rest.param.UriParamQualifierEnum;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import org.hamcrest.Matchers;
 import org.hl7.fhir.instance.model.api.IIdType;
-import org.hl7.fhir.r4.model.*;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.Test;
+import org.hl7.fhir.r4.model.CarePlan;
+import org.hl7.fhir.r4.model.DateType;
+import org.hl7.fhir.r4.model.DecimalType;
+import org.hl7.fhir.r4.model.Patient;
+import org.hl7.fhir.r4.model.RiskAssessment;
+import org.hl7.fhir.r4.model.ValueSet;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
-import java.util.Date;
 import java.util.List;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.empty;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @SuppressWarnings({"Duplicates"})
 public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 
-	@After
+	@AfterEach
 	public void after() {
 		myDaoConfig.setFilterParameterEnabled(new DaoConfig().isFilterParameterEnabled());
 	}
 
-	@Before
+	@BeforeEach
 	public void before() {
 		myDaoConfig.setFilterParameterEnabled(true);
 	}
@@ -948,7 +950,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriEq() throws Exception {
+	public void testSearchUriEq() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -974,7 +976,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriNe() throws Exception {
+	public void testSearchUriNe() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1000,7 +1002,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriCo() throws Exception {
+	public void testSearchUriCo() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1026,7 +1028,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriGt() throws Exception {
+	public void testSearchUriGt() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1052,7 +1054,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriLt() throws Exception {
+	public void testSearchUriLt() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1078,7 +1080,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriGe() throws Exception {
+	public void testSearchUriGe() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1100,7 +1102,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriLe() throws Exception {
+	public void testSearchUriLe() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1126,7 +1128,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriSw() throws Exception {
+	public void testSearchUriSw() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1148,7 +1150,7 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 	}
 
 	@Test
-	public void testSearchUriEw() throws Exception {
+	public void testSearchUriEw() {
 
 		ValueSet vs1 = new ValueSet();
 		vs1.setUrl("http://hl7.org/foo/baz");
@@ -1169,9 +1171,5 @@ public class FhirResourceDaoR4FilterTest extends BaseJpaR4Test {
 
 	}
 
-	@AfterClass
-	public static void afterClassClearContext() {
-		TestUtil.clearAllStaticFieldsForUnitTest();
-	}
 
 }

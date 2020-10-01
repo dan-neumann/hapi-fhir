@@ -1,9 +1,16 @@
 package ca.uhn.fhir.jpa.dao.r4;
 
-import ca.uhn.fhir.jpa.dao.*;
+import ca.uhn.fhir.jpa.api.config.DaoConfig;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.dao.BaseHapiFhirDao;
+import ca.uhn.fhir.jpa.dao.BaseHapiFhirResourceDao;
+import ca.uhn.fhir.jpa.dao.JpaResourceDao;
 import ca.uhn.fhir.jpa.entity.Search;
-import ca.uhn.fhir.jpa.model.cross.ResourcePersistentId;
-import ca.uhn.fhir.jpa.model.entity.*;
+import ca.uhn.fhir.jpa.model.entity.ResourceEncodingEnum;
+import ca.uhn.fhir.jpa.model.entity.ResourceHistoryTable;
+import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamString;
+import ca.uhn.fhir.jpa.model.entity.ResourceTable;
+import ca.uhn.fhir.jpa.model.entity.TagTypeEnum;
 import ca.uhn.fhir.jpa.model.search.SearchStatusEnum;
 import ca.uhn.fhir.jpa.search.SearchCoordinatorSvcImpl;
 import ca.uhn.fhir.jpa.searchparam.SearchParamConstants;
@@ -18,8 +25,22 @@ import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.api.SortOrderEnum;
 import ca.uhn.fhir.rest.api.SortSpec;
 import ca.uhn.fhir.rest.api.server.IBundleProvider;
-import ca.uhn.fhir.rest.param.*;
-import ca.uhn.fhir.rest.server.exceptions.*;
+import ca.uhn.fhir.rest.api.server.storage.ResourcePersistentId;
+import ca.uhn.fhir.rest.param.DateParam;
+import ca.uhn.fhir.rest.param.DateRangeParam;
+import ca.uhn.fhir.rest.param.ParamPrefixEnum;
+import ca.uhn.fhir.rest.param.QuantityParam;
+import ca.uhn.fhir.rest.param.ReferenceParam;
+import ca.uhn.fhir.rest.param.StringParam;
+import ca.uhn.fhir.rest.param.TokenOrListParam;
+import ca.uhn.fhir.rest.param.TokenParam;
+import ca.uhn.fhir.rest.param.UriParam;
+import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
+import ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceGoneException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 import com.google.common.base.Charsets;
 import com.google.common.collect.Lists;
 import org.apache.commons.io.IOUtils;
@@ -31,32 +52,94 @@ import org.hamcrest.core.StringContains;
 import org.hl7.fhir.instance.model.api.IAnyResource;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IIdType;
-import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.Age;
+import org.hl7.fhir.r4.model.Attachment;
+import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.Bundle.BundleType;
 import org.hl7.fhir.r4.model.Bundle.HTTPVerb;
+import org.hl7.fhir.r4.model.CanonicalType;
+import org.hl7.fhir.r4.model.CarePlan;
+import org.hl7.fhir.r4.model.CodeSystem;
+import org.hl7.fhir.r4.model.CodeType;
+import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.CompartmentDefinition;
+import org.hl7.fhir.r4.model.ConceptMap;
+import org.hl7.fhir.r4.model.Condition;
+import org.hl7.fhir.r4.model.Consent;
+import org.hl7.fhir.r4.model.DateTimeType;
+import org.hl7.fhir.r4.model.DateType;
+import org.hl7.fhir.r4.model.Device;
+import org.hl7.fhir.r4.model.DiagnosticReport;
+import org.hl7.fhir.r4.model.Encounter;
 import org.hl7.fhir.r4.model.Enumerations.AdministrativeGender;
 import org.hl7.fhir.r4.model.Enumerations.PublicationStatus;
+import org.hl7.fhir.r4.model.IdType;
+import org.hl7.fhir.r4.model.Meta;
+import org.hl7.fhir.r4.model.MolecularSequence;
+import org.hl7.fhir.r4.model.NamingSystem;
+import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Observation.ObservationStatus;
+import org.hl7.fhir.r4.model.OperationDefinition;
+import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueType;
+import org.hl7.fhir.r4.model.Organization;
+import org.hl7.fhir.r4.model.Patient;
+import org.hl7.fhir.r4.model.Period;
+import org.hl7.fhir.r4.model.Quantity;
 import org.hl7.fhir.r4.model.Quantity.QuantityComparator;
-import org.junit.*;
+import org.hl7.fhir.r4.model.Questionnaire;
+import org.hl7.fhir.r4.model.Range;
+import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.SimpleQuantity;
+import org.hl7.fhir.r4.model.StringType;
+import org.hl7.fhir.r4.model.StructureDefinition;
+import org.hl7.fhir.r4.model.Timing;
+import org.hl7.fhir.r4.model.UriType;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.apache.commons.lang3.StringUtils.defaultString;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.matchesPattern;
+import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.reset;
 
 @SuppressWarnings({"unchecked", "deprecation", "Duplicates"})
@@ -64,15 +147,16 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 
 	private static final org.slf4j.Logger ourLog = org.slf4j.LoggerFactory.getLogger(FhirResourceDaoR4Test.class);
 
-	@After
+	@AfterEach
 	public final void after() {
 		myDaoConfig.setAllowExternalReferences(new DaoConfig().isAllowExternalReferences());
 		myDaoConfig.setTreatReferencesAsLogical(new DaoConfig().getTreatReferencesAsLogical());
 		myDaoConfig.setEnforceReferentialIntegrityOnDelete(new DaoConfig().isEnforceReferentialIntegrityOnDelete());
 		myDaoConfig.setEnforceReferenceTargetTypes(new DaoConfig().isEnforceReferenceTargetTypes());
+		myDaoConfig.setIndexMissingFields(new DaoConfig().getIndexMissingFields());
 	}
 
-	@Before
+	@BeforeEach
 	public void before() {
 		myInterceptorRegistry.registerInterceptor(myInterceptor);
 	}
@@ -102,13 +186,13 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 		}
 	}
 
-	@Before
+	@BeforeEach
 	public void beforeDisableResultReuse() {
 		myDaoConfig.setReuseCachedSearchResultsForMillis(null);
 	}
 
 	private List<String> extractNames(IBundleProvider theSearch) {
-		ArrayList<String> retVal = new ArrayList<String>();
+		ArrayList<String> retVal = new ArrayList<>();
 		for (IBaseResource next : theSearch.getResources(0, theSearch.size())) {
 			Patient nextPt = (Patient) next;
 			retVal.add(nextPt.getName().get(0).getNameAsSingleString());
@@ -567,7 +651,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	}
 
 	@Test
-	@Ignore
+	@Disabled
 	public void testCreateBuiltInProfiles() throws Exception {
 		org.hl7.fhir.r4.model.Bundle bundle;
 		String name = "profiles-resources";
@@ -910,7 +994,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 			myPatientDao.create(p, mySrd);
 			fail();
 		} catch (UnprocessableEntityException e) {
-			assertEquals("Resource contains reference to Organization/" + id1.getIdPart() + " but resource with ID " + id1.getIdPart() + " is actually of type Observation", e.getMessage());
+			assertEquals("Resource contains reference to unknown resource ID Organization/" + id1.getIdPart(), e.getMessage());
 		}
 
 		// Now with a forced ID
@@ -1034,143 +1118,6 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 		}
 	}
 
-	@Test
-	public void testDatePeriodParamEndOnly() {
-		{
-			Encounter enc = new Encounter();
-			enc.addIdentifier().setSystem("testDatePeriodParam").setValue("02");
-			enc.getPeriod().getEndElement().setValueAsString("2001-01-02");
-			myEncounterDao.create(enc, mySrd);
-		}
-		SearchParameterMap params;
-		List<Encounter> encs;
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-03"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "02"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-01", "2001-01-03"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "02"));
-		// encs = toList(ourEncounterDao.search(params));
-		// assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-01", null));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "02"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-01"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "02"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(0, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-03", null));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "02"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(0, encs.size());
-
-	}
-
-	@Test
-	public void testDatePeriodParamStartAndEnd() {
-		{
-			Encounter enc = new Encounter();
-			enc.addIdentifier().setSystem("testDatePeriodParam").setValue("03");
-			enc.getPeriod().getStartElement().setValueAsString("2001-01-02");
-			enc.getPeriod().getEndElement().setValueAsString("2001-01-03");
-			myEncounterDao.create(enc, mySrd);
-		}
-
-		SearchParameterMap params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-01", "2001-01-03"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		List<Encounter> encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-02", "2001-01-06"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-01", null));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-03"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-05"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-01"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(0, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-05", null));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "03"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(0, encs.size());
-
-	}
-
-	@Test
-	public void testDatePeriodParamStartOnly() {
-		{
-			Encounter enc = new Encounter();
-			enc.addIdentifier().setSystem("testDatePeriodParam").setValue("01");
-			enc.getPeriod().getStartElement().setValueAsString("2001-01-02");
-			myEncounterDao.create(enc, mySrd);
-		}
-
-		SearchParameterMap params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-01", "2001-01-03"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "01"));
-		List<Encounter> encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-01", null));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "01"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-03"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "01"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(1, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam(null, "2001-01-01"));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "01"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(0, encs.size());
-
-		params = new SearchParameterMap();
-		params.add(Encounter.SP_DATE, new DateRangeParam("2001-01-03", null));
-		params.add(Encounter.SP_IDENTIFIER, new TokenParam("testDatePeriodParam", "01"));
-		encs = toList(myEncounterDao.search(params));
-		assertEquals(0, encs.size());
-
-	}
 
 	@Test
 	public void testDeleteFailsIfIncomingLinks() {
@@ -1582,7 +1529,32 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	}
 
 	@Test
+	public void testDeleteByTagWrongType() {
+		Organization org = new Organization();
+		org.getMeta().addTag().setCode("term");
+		IIdType orgId = myOrganizationDao.create(org, mySrd).getId().toUnqualifiedVersionless();
+		myPatientDao.deleteByUrl("Patient?_tag=term", mySrd);
+		// The organization is still there
+		myOrganizationDao.read(orgId);
+	}
+
+	@Test
+	public void testSearchByTagWrongType() {
+		Organization org = new Organization();
+		org.getMeta().addTag().setCode("term");
+		myOrganizationDao.create(org, mySrd);
+		SearchParameterMap map = new SearchParameterMap();
+		map.add("_tag", new UriParam("term"));
+		map.setLoadSynchronous(true);
+		IBundleProvider result = myPatientDao.search(map);
+		List<IBaseResource> resources = result.getResources(0, 1);
+		assertEquals(0, resources.size());
+	}
+
+	@Test
 	public void testDeleteWithMatchUrlQualifierMissing() {
+		myDaoConfig.setIndexMissingFields(DaoConfig.IndexEnabledEnum.ENABLED);
+
 		String methodName = "testDeleteWithMatchUrlChainedProfile";
 
 		/*
@@ -2389,7 +2361,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 			found = toList(myPatientDao.search(new SearchParameterMap(Patient.SP_BIRTHDATE + "AAAA", new DateParam(ParamPrefixEnum.GREATERTHAN, "2000-01-01")).setLoadSynchronous(true)));
 			assertEquals(0, found.size());
 		} catch (InvalidRequestException e) {
-			assertEquals("Unknown search parameter birthdateAAAA for resource type Patient", e.getMessage());
+			assertEquals("Unknown search parameter \"birthdateAAAA\" for resource type \"Patient\". Valid search parameters for this search are: [_id, _language, active, address, address-city, address-country, address-postalcode, address-state, address-use, birthdate, death-date, deceased, email, family, gender, general-practitioner, given, identifier, language, link, name, organization, phone, phonetic, telecom]", e.getMessage());
 		}
 	}
 
@@ -3000,6 +2972,8 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 
 	@Test
 	public void testSortByDate() {
+		myDaoConfig.setIndexMissingFields(DaoConfig.IndexEnabledEnum.ENABLED);
+
 		Patient p = new Patient();
 		p.addIdentifier().setSystem("urn:system").setValue("testtestSortByDate");
 		p.addName().setFamily("testSortF1").addGiven("testSortG1");
@@ -3053,7 +3027,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	}
 
 	@Test
-	@Ignore
+	@Disabled
 	public void testSortByEncounterLength() {
 		String methodName = "testSortByNumber";
 
@@ -3226,7 +3200,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	}
 
 	@Test
-	@Ignore
+	@Disabled
 	public void testSortByQuantity() {
 		Observation res;
 
@@ -3329,6 +3303,8 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 
 	@Test
 	public void testSortByString01() {
+		myDaoConfig.setIndexMissingFields(DaoConfig.IndexEnabledEnum.ENABLED);
+
 		Patient p = new Patient();
 		String string = "testSortByString01";
 		p.addIdentifier().setSystem("urn:system").setValue(string);
@@ -3492,7 +3468,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	}
 
 	@Test
-	@Ignore
+	@Disabled
 	public void testSortByUri() {
 		ConceptMap res = new ConceptMap();
 		res.addGroup().setSource("http://foo2");
@@ -3701,15 +3677,15 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 		published = (ArrayList<Coding>) retrieved.getMeta().getTag();
 		sort(published);
 		assertEquals(3, published.size());
-		assertEquals(published.toString(), "Dog", published.get(0).getCode());
-		assertEquals(published.toString(), "Puppies", published.get(0).getDisplay());
-		assertEquals(published.toString(), null, published.get(0).getSystem());
-		assertEquals(published.toString(), "Cat", published.get(1).getCode());
-		assertEquals(published.toString(), "Kittens", published.get(1).getDisplay());
-		assertEquals(published.toString(), "http://foo", published.get(1).getSystem());
-		assertEquals(published.toString(), "Cow", published.get(2).getCode());
-		assertEquals(published.toString(), "Calves", published.get(2).getDisplay());
-		assertEquals(published.toString(), "http://foo", published.get(2).getSystem());
+		assertEquals( "Dog", published.get(0).getCode());
+		assertEquals( "Puppies", published.get(0).getDisplay());
+		assertEquals( null, published.get(0).getSystem());
+		assertEquals( "Cat", published.get(1).getCode());
+		assertEquals( "Kittens", published.get(1).getDisplay());
+		assertEquals( "http://foo", published.get(1).getSystem());
+		assertEquals( "Cow", published.get(2).getCode());
+		assertEquals( "Calves", published.get(2).getDisplay());
+		assertEquals( "http://foo", published.get(2).getSystem());
 
 		secLabels = retrieved.getMeta().getSecurity();
 		sortCodings(secLabels);
@@ -3842,7 +3818,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	 */
 	@Test
 	public void testUploadExtensionStructureDefinition() {
-		StructureDefinition ext = myValidationSupport.fetchStructureDefinition(myFhirCtx, "http://hl7.org/fhir/StructureDefinition/familymemberhistory-type");
+		StructureDefinition ext = (StructureDefinition) myValidationSupport.fetchStructureDefinition("http://hl7.org/fhir/StructureDefinition/familymemberhistory-type");
 		Validate.notNull(ext);
 		myStructureDefinitionDao.update(ext);
 	}
@@ -3868,11 +3844,6 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 		assertNotEquals(uuid, results.getUuid());
 	}
 
-	@AfterClass
-	public static void afterClassClearContext() {
-		TestUtil.clearAllStaticFieldsForUnitTest();
-	}
-
 	public static void assertConflictException(String theResourceType, ResourceVersionConflictException e) {
 		assertThat(e.getMessage(), matchesPattern(
 			"Unable to delete [a-zA-Z]+/[0-9]+ because at least one resource has a reference to this resource. First reference found was resource " + theResourceType + "/[0-9]+ in path [a-zA-Z]+.[a-zA-Z]+"));
@@ -3880,7 +3851,7 @@ public class FhirResourceDaoR4Test extends BaseJpaR4Test {
 	}
 
 	private static List<String> toStringList(List<CanonicalType> theUriType) {
-		ArrayList<String> retVal = new ArrayList<String>();
+		ArrayList<String> retVal = new ArrayList<>();
 		for (UriType next : theUriType) {
 			retVal.add(next.getValue());
 		}

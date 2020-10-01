@@ -20,6 +20,7 @@ package ca.uhn.fhir.jpa.migrate.taskdef;
  * #L%
  */
 
+import ca.uhn.fhir.jpa.migrate.DriverTypeEnum;
 import ca.uhn.fhir.jpa.migrate.JdbcUtils;
 import org.apache.commons.lang3.Validate;
 import org.apache.commons.lang3.builder.EqualsBuilder;
@@ -34,7 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public class AddIndexTask extends BaseTableTask<AddIndexTask> {
+public class AddIndexTask extends BaseTableTask {
 
 	private static final Logger ourLog = LoggerFactory.getLogger(AddIndexTask.class);
 	private String myIndexName;
@@ -78,7 +79,18 @@ public class AddIndexTask extends BaseTableTask<AddIndexTask> {
 
 		String unique = myUnique ? "unique " : "";
 		String columns = String.join(", ", myColumns);
-		String sql = "create " + unique + "index " + myIndexName + " on " + getTableName() + "(" + columns + ")";
+		String mssqlWhereClause = "";
+		if (myUnique && getDriverType() == DriverTypeEnum.MSSQL_2012) {
+			mssqlWhereClause = " WHERE (";
+			for (int i = 0; i <myColumns.size(); i++) {
+				mssqlWhereClause += myColumns.get(i) + " IS NOT NULL ";
+				if (i < myColumns.size() - 1) {
+					mssqlWhereClause += "AND ";
+				}
+			}
+			mssqlWhereClause += ")";
+		}
+		String sql = "create " + unique + "index " + myIndexName + " on " + getTableName() + "(" + columns + ")" + mssqlWhereClause;
 		String tableName = getTableName();
 
 		try {
@@ -97,7 +109,7 @@ public class AddIndexTask extends BaseTableTask<AddIndexTask> {
 	}
 
 	@Override
-	protected void generateEquals(EqualsBuilder theBuilder, BaseTask<AddIndexTask> theOtherObject) {
+	protected void generateEquals(EqualsBuilder theBuilder, BaseTask theOtherObject) {
 		super.generateEquals(theBuilder, theOtherObject);
 
 		AddIndexTask otherObject = (AddIndexTask) theOtherObject;

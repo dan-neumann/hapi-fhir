@@ -2,7 +2,7 @@
 
 HAPI FHIR 3.8.0 introduced a new interceptor framework that is used across the entire library. In previous versions of HAPI FHIR, a "Server Interceptor" framework existed and a separate "Client Interceptor" framework existed. These have now been combined into a single unified (and much more powerful) framework.
 
-Interceptor classes may "hook into" various points in the processing chain in both the client and the server. The interceptor framework has been designed do be flexible enough to hook into almost every part of the library. When trying to figure out "how would I make HAPI FHIR do X", the answer is very often to create an interceptor.
+Interceptor classes may "hook into" various points in the processing chain in both the client and the server. The interceptor framework has been designed to be flexible enough to hook into almost every part of the library. When trying to figure out "how would I make HAPI FHIR do X", the answer is very often to create an interceptor.
 
 The following example shows a very simple interceptor example. 
 
@@ -31,6 +31,8 @@ Creating your own interceptors is easy. Custom interceptor classes do not need t
 * The method must have an appropriate return value for the chosen [Pointcut](/apidocs/hapi-fhir-base/ca/uhn/fhir/interceptor/api/Pointcut.html).
 
 * The method may have any of the parameters specified for the given [Pointcut](/apidocs/hapi-fhir-base/ca/uhn/fhir/interceptor/api/Pointcut.html). 
+
+* The method must be public.
 
 The following example shows a simple request counter interceptor.
 

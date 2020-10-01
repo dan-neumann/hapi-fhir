@@ -20,9 +20,10 @@ package ca.uhn.fhir.jpa.dao.predicate;
  * #L%
  */
 
+import ca.uhn.fhir.context.RuntimeSearchParam;
+import ca.uhn.fhir.interceptor.model.RequestPartitionId;
 import ca.uhn.fhir.jpa.dao.SearchBuilder;
 import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamNumber;
-import ca.uhn.fhir.jpa.model.entity.ResourceTable;
 import ca.uhn.fhir.model.api.IQueryParameterType;
 import ca.uhn.fhir.rest.param.NumberParam;
 import ca.uhn.fhir.rest.param.ParamPrefixEnum;
@@ -32,7 +33,7 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
 import javax.persistence.criteria.Expression;
-import javax.persistence.criteria.Join;
+import javax.persistence.criteria.From;
 import javax.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -51,18 +52,21 @@ class PredicateBuilderNumber extends BasePredicateBuilder implements IPredicateB
 
 	@Override
 	public Predicate addPredicate(String theResourceName,
-											String theParamName,
+											RuntimeSearchParam theSearchParam,
 											List<? extends IQueryParameterType> theList,
-											SearchFilterParser.CompareOperation operation) {
+											SearchFilterParser.CompareOperation operation,
+											RequestPartitionId theRequestPartitionId) {
 
-		Join<ResourceTable, ResourceIndexedSearchParamNumber> join = createJoin(SearchBuilderJoinEnum.NUMBER, theParamName);
+		From<?, ResourceIndexedSearchParamNumber> join = myQueryStack.createJoin(SearchBuilderJoinEnum.NUMBER, theSearchParam.getName());
 
 		if (theList.get(0).getMissing() != null) {
-			addPredicateParamMissing(theResourceName, theParamName, theList.get(0).getMissing(), join);
+			addPredicateParamMissingForNonReference(theResourceName, theSearchParam.getName(), theList.get(0).getMissing(), join, theRequestPartitionId);
 			return null;
 		}
 
 		List<Predicate> codePredicates = new ArrayList<>();
+		addPartitionIdPredicate(theRequestPartitionId, join, codePredicates);
+
 		for (IQueryParameterType nextOr : theList) {
 
 			if (nextOr instanceof NumberParam) {
@@ -94,8 +98,8 @@ class PredicateBuilderNumber extends BasePredicateBuilder implements IPredicateB
 
 				String invalidMessageName = "invalidNumberPrefix";
 
-				Predicate predicateNumeric = createPredicateNumeric(theResourceName, theParamName, join, myBuilder, nextOr, prefix, value, fromObj, invalidMessageName);
-				Predicate predicateOuter = combineParamIndexPredicateWithParamNamePredicate(theResourceName, theParamName, join, predicateNumeric);
+				Predicate predicateNumeric = createPredicateNumeric(theResourceName, theSearchParam.getName(), join, myCriteriaBuilder, nextOr, prefix, value, fromObj, invalidMessageName, theRequestPartitionId);
+				Predicate predicateOuter = combineParamIndexPredicateWithParamNamePredicate(theResourceName, theSearchParam.getName(), join, predicateNumeric, theRequestPartitionId);
 				codePredicates.add(predicateOuter);
 
 			} else {
@@ -104,8 +108,8 @@ class PredicateBuilderNumber extends BasePredicateBuilder implements IPredicateB
 
 		}
 
-		Predicate predicate = myBuilder.or(toArray(codePredicates));
-		myQueryRoot.addPredicate(predicate);
+		Predicate predicate = myCriteriaBuilder.or(toArray(codePredicates));
+		myQueryStack.addPredicateWithImplicitTypeSelection(predicate);
 		return predicate;
 	}
 }

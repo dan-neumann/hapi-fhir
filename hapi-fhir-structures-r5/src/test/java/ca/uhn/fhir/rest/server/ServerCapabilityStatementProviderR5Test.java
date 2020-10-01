@@ -37,9 +37,9 @@ import org.hl7.fhir.r5.model.CapabilityStatement.TypeRestfulInteraction;
 import org.hl7.fhir.r5.model.Enumerations.PublicationStatus;
 import org.hl7.fhir.r5.model.OperationDefinition.OperationDefinitionParameterComponent;
 import org.hl7.fhir.r5.model.OperationDefinition.OperationKind;
-import org.junit.AfterClass;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.http.HttpServletRequest;
@@ -49,16 +49,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -133,6 +133,7 @@ public class ServerCapabilityStatementProviderR5Test {
 
 		RestfulServer rs = new RestfulServer(ourCtx);
 		rs.setProviders(new ProviderWithExtendedOperationReturningBundle());
+		rs.setServerAddressStrategy(new HardcodedServerAddressStrategy("http://localhost/baseR4"));
 
 		ServerCapabilityStatementProvider sc = new ServerCapabilityStatementProvider();
 		rs.setServerConformanceProvider(sc);
@@ -257,6 +258,7 @@ public class ServerCapabilityStatementProviderR5Test {
 	public void testOperationAcrossMultipleTypes() throws Exception {
 		RestfulServer rs = new RestfulServer(ourCtx);
 		rs.setProviders(new MultiTypePatientProvider(), new MultiTypeEncounterProvider());
+		rs.setServerAddressStrategy(new HardcodedServerAddressStrategy("http://localhost/baseR4"));
 
 		ServerCapabilityStatementProvider sc = new ServerCapabilityStatementProvider();
 		rs.setServerConformanceProvider(sc);
@@ -638,7 +640,7 @@ public class ServerCapabilityStatementProviderR5Test {
 	}
 
 	@Test
-	@Ignore
+	@Disabled
 	public void testValidateGeneratedStatement() throws Exception {
 
 		RestfulServer rs = new RestfulServer(ourCtx);
@@ -653,13 +655,14 @@ public class ServerCapabilityStatementProviderR5Test {
 		ourLog.info(ourCtx.newXmlParser().setPrettyPrint(true).encodeResourceToString(conformance));
 
 		ValidationResult result = ourCtx.newValidator().validateWithResult(conformance);
-		assertTrue(result.getMessages().toString(), result.isSuccessful());
+		assertTrue(result.isSuccessful(), result.getMessages().toString());
 	}
 
 	@Test
 	public void testSystemLevelNamedQueryWithParameters() throws Exception {
 		RestfulServer rs = new RestfulServer(ourCtx);
 		rs.setProviders(new NamedQueryPlainProvider());
+		rs.setServerAddressStrategy(new HardcodedServerAddressStrategy("http://localhost/baseR4"));
 
 		ServerCapabilityStatementProvider sc = new ServerCapabilityStatementProvider();
 		rs.setServerConformanceProvider(sc);
@@ -704,6 +707,7 @@ public class ServerCapabilityStatementProviderR5Test {
 	public void testResourceLevelNamedQueryWithParameters() throws Exception {
 		RestfulServer rs = new RestfulServer(ourCtx);
 		rs.setProviders(new NamedQueryResourceProvider());
+		rs.setServerAddressStrategy(new HardcodedServerAddressStrategy("http://localhost/baseR4"));
 
 		ServerCapabilityStatementProvider sc = new ServerCapabilityStatementProvider();
 		rs.setServerConformanceProvider(sc);
@@ -747,6 +751,7 @@ public class ServerCapabilityStatementProviderR5Test {
 	public void testExtendedOperationAtTypeLevel() throws Exception {
 		RestfulServer rs = new RestfulServer(ourCtx);
 		rs.setProviders(new TypeLevelOperationProvider());
+		rs.setServerAddressStrategy(new HardcodedServerAddressStrategy("http://localhost/baseR4"));
 
 		ServerCapabilityStatementProvider sc = new ServerCapabilityStatementProvider();
 		rs.setServerConformanceProvider(sc);
@@ -819,7 +824,7 @@ public class ServerCapabilityStatementProviderR5Test {
 		ourLog.info("Def: {}", conf);
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void afterClassClearContext() {
 		TestUtil.clearAllStaticFieldsForUnitTest();
 	}

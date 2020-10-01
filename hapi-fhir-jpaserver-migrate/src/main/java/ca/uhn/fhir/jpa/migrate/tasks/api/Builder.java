@@ -61,6 +61,7 @@ public class Builder {
 		return this;
 	}
 
+	@SuppressWarnings("unused")
 	public Builder initializeSchema(String theVersion, String theSchemaName, ISchemaInitializationProvider theSchemaInitializationProvider) {
 		InitializeSchemaTask task = new InitializeSchemaTask(myRelease, theVersion, theSchemaInitializationProvider);
 		task.setDescription("Initialize " + theSchemaName + " schema");
@@ -95,7 +96,11 @@ public class Builder {
 		addTask(task);
 	}
 
-	public class BuilderAddTableRawSql {
+    public void addNop(String theVersion) {
+		 addTask(new NopTask(myRelease, theVersion));
+    }
+
+    public class BuilderAddTableRawSql {
 
 		private final AddTableRawSqlTask myTask;
 
@@ -176,10 +181,17 @@ public class Builder {
 			return task;
 		}
 
+		/**
+		 * @deprecated Do not rename indexes - It is too hard to figure out what happened if something goes wrong
+		 */
+		@Deprecated
 		public void renameIndex(String theVersion, String theOldIndexName, String theNewIndexName) {
 			renameIndexOptional(false, theVersion, theOldIndexName, theNewIndexName);
 		}
 
+		/**
+		 * @deprecated Do not rename indexes - It is too hard to figure out what happened if something goes wrong
+		 */
 		public void renameIndexStub(String theVersion, String theOldIndexName, String theNewIndexName) {
 			renameIndexOptional(true, theVersion, theOldIndexName, theNewIndexName);
 		}
@@ -207,17 +219,18 @@ public class Builder {
 			return new BuilderWithTableName.BuilderAddColumnWithName(myRelease, theVersion, theColumnName, this);
 		}
 
-		public void dropColumn(String theVersion, String theColumnName) {
+		public BuilderCompleteTask dropColumn(String theVersion, String theColumnName) {
 			Validate.notBlank(theColumnName);
 			DropColumnTask task = new DropColumnTask(myRelease, theVersion);
 			task.setTableName(myTableName);
 			task.setColumnName(theColumnName);
 			addTask(task);
+			return new BuilderCompleteTask(task);
 		}
 
 		@Override
 		public void addTask(BaseTask theTask) {
-			((BaseTableTask<?>) theTask).setTableName(myTableName);
+			((BaseTableTask) theTask).setTableName(myTableName);
 			mySink.addTask(theTask);
 		}
 
@@ -337,12 +350,12 @@ public class Builder {
 					myNullable = theNullable;
 				}
 
-				public void withType(BaseTableColumnTypeTask.ColumnTypeEnum theColumnType) {
+				public void withType(ColumnTypeEnum theColumnType) {
 					withType(theColumnType, null);
 				}
 
-				public void withType(BaseTableColumnTypeTask.ColumnTypeEnum theColumnType, Integer theLength) {
-					if (theColumnType == BaseTableColumnTypeTask.ColumnTypeEnum.STRING) {
+				public void withType(ColumnTypeEnum theColumnType, Integer theLength) {
+					if (theColumnType == ColumnTypeEnum.STRING) {
 						if (theLength == null || theLength == 0) {
 							throw new IllegalArgumentException("Can not specify length 0 for column of type " + theColumnType);
 						}
@@ -433,11 +446,11 @@ public class Builder {
 					myNullable = theNullable;
 				}
 
-				public BuilderCompleteTask type(AddColumnTask.ColumnTypeEnum theColumnType) {
+				public BuilderCompleteTask type(ColumnTypeEnum theColumnType) {
 					return type(theColumnType, null);
 				}
 
-				public BuilderCompleteTask type(AddColumnTask.ColumnTypeEnum theColumnType, Integer theLength) {
+				public BuilderCompleteTask type(ColumnTypeEnum theColumnType, Integer theLength) {
 					AddColumnTask task = new AddColumnTask(myRelease, myVersion);
 					task.setColumnName(myColumnName);
 					task.setNullable(myNullable);
@@ -457,9 +470,9 @@ public class Builder {
 
 	public static class BuilderCompleteTask {
 
-		private final BaseTask<?> myTask;
+		private final BaseTask myTask;
 
-		public BuilderCompleteTask(BaseTask<?> theTask) {
+		public BuilderCompleteTask(BaseTask theTask) {
 			myTask = theTask;
 		}
 

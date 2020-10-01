@@ -4,19 +4,25 @@ import ca.uhn.fhir.jpa.migrate.DriverTypeEnum;
 import ca.uhn.fhir.jpa.migrate.JdbcUtils;
 import ca.uhn.fhir.jpa.migrate.tasks.api.ISchemaInitializationProvider;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 public class InitializeSchemaTaskTest extends BaseTest {
 
-	@Test
-	public void testInitializeTwice() throws SQLException {
+	@ParameterizedTest(name = "{index}: {0}")
+	@MethodSource("data")
+	public void testInitializeTwice(Supplier<TestDatabaseDetails> theTestDatabaseDetails) throws SQLException {
+		before(theTestDatabaseDetails);
+
 		InitializeSchemaTask task = new InitializeSchemaTask("1", "1", new TestProvider());
 		getMigrator().addTask(task);
 		getMigrator().migrate();
@@ -41,6 +47,21 @@ public class InitializeSchemaTaskTest extends BaseTest {
 		}
 
 		@Override
+		public String getSchemaDescription() {
+			return "TEST";
+		}
+
+		@Override
+		public ISchemaInitializationProvider setSchemaDescription(String theSchemaDescription) {
+			return this;
+		}
+
+		@Override
+		public boolean canInitializeSchema() {
+			return false;
+		}
+
+		@Override
 		public boolean equals(Object theO) {
 			if (this == theO) return true;
 
@@ -52,7 +73,7 @@ public class InitializeSchemaTaskTest extends BaseTest {
 		}
 
 		private int size() {
-			return getSqlStatements(DriverTypeEnum.H2_EMBEDDED).size();
+			return getSqlStatements(getDriverType()).size();
 		}
 
 		// This could be stricter, but we don't want this to be brittle.

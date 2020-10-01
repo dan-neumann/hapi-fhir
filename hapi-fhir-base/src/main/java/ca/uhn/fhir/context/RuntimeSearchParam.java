@@ -1,11 +1,11 @@
 package ca.uhn.fhir.context;
 
+import ca.uhn.fhir.context.phonetic.IPhoneticEncoder;
 import ca.uhn.fhir.rest.api.RestSearchParameterTypeEnum;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
-import org.hl7.fhir.instance.model.api.IBaseDatatype;
 import org.hl7.fhir.instance.model.api.IBaseExtension;
 import org.hl7.fhir.instance.model.api.IIdType;
 
@@ -56,6 +56,7 @@ public class RuntimeSearchParam {
 	private final RuntimeSearchParamStatusEnum myStatus;
 	private final String myUri;
 	private final Map<String, List<IBaseExtension<?, ?>>> myExtensions = new HashMap<>();
+	private IPhoneticEncoder myPhoneticEncoder;
 
 	/**
 	 * Constructor
@@ -105,19 +106,30 @@ public class RuntimeSearchParam {
 		}
 	}
 
+	/**
+	 * Constructor
+	 */
 	public RuntimeSearchParam(String theName, String theDescription, String thePath, RestSearchParameterTypeEnum theParamType, Set<String> theProvidesMembershipInCompartments, Set<String> theTargets, RuntimeSearchParamStatusEnum theStatus) {
 		this(null, null, theName, theDescription, thePath, theParamType, null, theProvidesMembershipInCompartments, theTargets, theStatus);
 	}
 
 	/**
-	 * Retrieve user data - This can be used to store any application-specific data
-	 *
-	 * @return
+	 * Copy constructor
 	 */
+	public RuntimeSearchParam(RuntimeSearchParam theSp) {
+		this(theSp.getId(), theSp.getUri(), theSp.getName(), theSp.getDescription(), theSp.getPath(), theSp.getParamType(), theSp.getCompositeOf(), theSp.getProvidesMembershipInCompartments(), theSp.getTargets(), theSp.getStatus(), theSp.getBase());
+	}
+
+	/**
+	 * Retrieve user data - This can be used to store any application-specific data
+	 */
+	@Nonnull
 	public List<IBaseExtension<?, ?>> getExtensions(String theKey) {
 		List<IBaseExtension<?, ?>> retVal = myExtensions.get(theKey);
 		if (retVal != null) {
 			retVal = Collections.unmodifiableList(retVal);
+		} else {
+			retVal = Collections.emptyList();
 		}
 		return retVal;
 	}
@@ -235,7 +247,6 @@ public class RuntimeSearchParam {
 		return myProvidesMembershipInCompartments;
 	}
 
-
 	public enum RuntimeSearchParamStatusEnum {
 		ACTIVE,
 		DRAFT,
@@ -243,4 +254,15 @@ public class RuntimeSearchParam {
 		UNKNOWN
 	}
 
+	public RuntimeSearchParam setPhoneticEncoder(IPhoneticEncoder thePhoneticEncoder) {
+		myPhoneticEncoder = thePhoneticEncoder;
+		return this;
+	}
+
+	public String encode(String theString) {
+		if (myPhoneticEncoder == null || theString == null) {
+			return theString;
+		}
+		return myPhoneticEncoder.encode(theString);
+	}
 }

@@ -22,7 +22,14 @@ package ca.uhn.fhir.rest.api;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+import static org.apache.commons.lang3.StringUtils.defaultIfBlank;
 
 public class Constants {
 
@@ -59,6 +66,7 @@ public class Constants {
 	public static final String CT_HTML = "text/html";
 	public static final String CT_HTML_WITH_UTF8 = "text/html" + CHARSET_UTF8_CTSUFFIX;
 	public static final String CT_JSON = "application/json";
+	public static final String CT_GRAPHQL = "application/graphql";
 	public static final String CT_JSON_PATCH = "application/json-patch+json";
 	public static final String CT_OCTET_STREAM = "application/octet-stream";
 	public static final String CT_TEXT = "text/plain";
@@ -142,6 +150,8 @@ public class Constants {
 	 */
 	public static final String PARAM_BUNDLETYPE = "_bundletype";
 	public static final String PARAM_FILTER = "_filter";
+	public static final String PARAM_CONTAINED = "_contained";
+	public static final String PARAM_CONTAINED_TYPE = "_containedType";
 	public static final String PARAM_CONTENT = "_content";
 	public static final String PARAM_COUNT = "_count";
 	public static final String PARAM_DELETE = "_delete";
@@ -243,16 +253,16 @@ public class Constants {
 	 * Operation name for the $lastn operation
 	 */
 	public static final String OPERATION_LASTN = "$lastn";
+	public static final String PARAM_FHIRPATH = "_fhirpath";
+	public static final String PARAM_TYPE = "_type";
+
 	/**
-	 * <p>
-	 * This extension represents the equivalent of the
-	 * <code>Resource.meta.source</code> field within R4+ resources, and is for
-	 * use in DSTU3 resources. It should contain a value of type <code>uri</code>
-	 * and will be located on the Resource.meta
-	 * </p>
+	 * {@link org.hl7.fhir.instance.model.api.IBaseResource#getUserData(String) User metadata key} used
+	 * to store the partition ID (if any) associated with the given resource. Value for this
+	 * key will be of type {@link ca.uhn.fhir.interceptor.model.RequestPartitionId}.
 	 */
-	public static final String EXT_META_SOURCE = "http://hapifhir.io/fhir/StructureDefinition/resource-meta-source";
-	public static final String CODESYSTEM_VALIDATE_NOT_NEEDED = UUID.randomUUID().toString();
+	public static final String RESOURCE_PARTITION_ID = Constants.class.getName() + "_RESOURCE_PARTITION_ID";
+	public static final String CT_APPLICATION_GZIP = "application/gzip";
 
 	static {
 		CHARSET_UTF8 = StandardCharsets.UTF_8;
@@ -354,16 +364,7 @@ public class Constants {
 		CORS_ALLWED_METHODS = Collections.unmodifiableSet(corsAllowedMethods);
 	}
 
-	public static boolean codeSystemNotNeeded(String theCodeSystem) {
-		return Constants.CODESYSTEM_VALIDATE_NOT_NEEDED.equals(theCodeSystem);
-	}
-
-
 	public static String codeSystemWithDefaultDescription(String theSystem) {
-		if (codeSystemNotNeeded(theSystem)) {
-			return "(none)";
-		} else {
-			return theSystem;
-		}
+		return defaultIfBlank(theSystem, "(none)");
 	}
 }

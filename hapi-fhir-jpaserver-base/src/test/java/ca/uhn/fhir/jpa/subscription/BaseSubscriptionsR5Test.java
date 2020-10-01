@@ -1,10 +1,12 @@
 package ca.uhn.fhir.jpa.subscription;
 
 import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.jpa.dao.DaoConfig;
+import ca.uhn.fhir.context.FhirVersionEnum;
+import ca.uhn.fhir.jpa.api.config.DaoConfig;
 import ca.uhn.fhir.jpa.provider.r5.BaseResourceProviderR5Test;
-import ca.uhn.fhir.jpa.subscription.module.CanonicalSubscriptionChannelType;
-import ca.uhn.fhir.jpa.subscription.module.LinkedBlockingQueueSubscribableChannel;
+import ca.uhn.fhir.jpa.subscription.channel.impl.LinkedBlockingChannel;
+import ca.uhn.fhir.jpa.subscription.model.CanonicalSubscriptionChannelType;
+import ca.uhn.fhir.jpa.subscription.submit.interceptor.SubscriptionMatcherInterceptor;
 import ca.uhn.fhir.rest.annotation.Create;
 import ca.uhn.fhir.rest.annotation.ResourceParam;
 import ca.uhn.fhir.rest.annotation.Update;
@@ -29,12 +31,12 @@ import org.hl7.fhir.r5.model.Enumerations;
 import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.Observation;
 import org.hl7.fhir.r5.model.Subscription;
-import org.hl7.fhir.r5.model.Topic;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
+import org.hl7.fhir.r5.model.SubscriptionTopic;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.annotation.PostConstruct;
@@ -44,57 +46,51 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
 
-@Ignore
+@Disabled
 public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test {
 	private static final org.slf4j.Logger ourLog = org.slf4j.LoggerFactory.getLogger(BaseSubscriptionsR5Test.class);
-
-	private static Server ourListenerServer;
-    protected static int ourListenerPort;
+	protected static int ourListenerPort;
 	protected static List<String> ourContentTypes = Collections.synchronizedList(new ArrayList<>());
 	protected static List<String> ourHeaders = Collections.synchronizedList(new ArrayList<>());
+	protected static List<Observation> ourCreatedObservations = Collections.synchronizedList(Lists.newArrayList());
+	protected static List<Observation> ourUpdatedObservations = Collections.synchronizedList(Lists.newArrayList());
+	private static Server ourListenerServer;
 	private static SingleQueryCountHolder ourCountHolder;
-
-	@Autowired
-	private SingleQueryCountHolder myCountHolder;
+	private static String ourListenerServerBase;
 	@Autowired
 	protected SubscriptionTestUtil mySubscriptionTestUtil;
 	@Autowired
 	protected SubscriptionMatcherInterceptor mySubscriptionMatcherInterceptor;
-
 	protected CountingInterceptor myCountingInterceptor;
-
-	protected static List<Observation> ourCreatedObservations = Collections.synchronizedList(Lists.newArrayList());
-	protected static List<Observation> ourUpdatedObservations = Collections.synchronizedList(Lists.newArrayList());
-	private static String ourListenerServerBase;
-
 	protected List<IIdType> mySubscriptionIds = Collections.synchronizedList(new ArrayList<>());
+	@Autowired
+	private SingleQueryCountHolder myCountHolder;
 
-
-	@After
+	@AfterEach
 	public void afterUnregisterRestHookListener() {
 		for (IIdType next : mySubscriptionIds) {
 			IIdType nextId = next.toUnqualifiedVersionless();
 			ourLog.info("Deleting: {}", nextId);
-			ourClient.delete().resourceById(nextId).execute();
+			myClient.delete().resourceById(nextId).execute();
 		}
 		mySubscriptionIds.clear();
 
 		myDaoConfig.setAllowMultipleDelete(true);
 		ourLog.info("Deleting all subscriptions");
-		ourClient.delete().resourceConditionalByUrl("Subscription?status=active").execute();
-		ourClient.delete().resourceConditionalByUrl("Observation?code:missing=false").execute();
+		myClient.delete().resourceConditionalByUrl("Subscription?status=active").execute();
+		myClient.delete().resourceConditionalByUrl("Observation?code:missing=false").execute();
 		ourLog.info("Done deleting all subscriptions");
 		myDaoConfig.setAllowMultipleDelete(new DaoConfig().isAllowMultipleDelete());
 
 		mySubscriptionTestUtil.unregisterSubscriptionInterceptor();
 	}
 
-	@Before
+	@BeforeEach
 	public void beforeRegisterRestHookListener() {
 		mySubscriptionTestUtil.registerRestHookInterceptor();
 	}
 
-	@Before
+	@BeforeEach
 	public void beforeReset() throws Exception {
 		ourCreatedObservations.clear();
 		ourUpdatedObservations.clear();
@@ -102,21 +98,21 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 		ourHeaders.clear();
 
 		// Delete all Subscriptions
-		if (ourClient != null) {
-			Bundle allSubscriptions = ourClient.search().forResource(Subscription.class).returnBundle(Bundle.class).execute();
+		if (myClient != null) {
+			Bundle allSubscriptions = myClient.search().forResource(Subscription.class).returnBundle(Bundle.class).execute();
 			for (IBaseResource next : BundleUtil.toListOfResources(myFhirCtx, allSubscriptions)) {
-				ourClient.delete().resource(next).execute();
+				myClient.delete().resource(next).execute();
 			}
 			waitForActivatedSubscriptionCount(0);
 		}
 
-		LinkedBlockingQueueSubscribableChannel processingChannel = mySubscriptionMatcherInterceptor.getProcessingChannelForUnitTest();
+		LinkedBlockingChannel processingChannel = mySubscriptionMatcherInterceptor.getProcessingChannelForUnitTest();
 		if (processingChannel != null) {
 			processingChannel.clearInterceptorsForUnitTest();
 		}
 		myCountingInterceptor = new CountingInterceptor();
 		if (processingChannel != null) {
-			processingChannel.addInterceptorForUnitTest(myCountingInterceptor);
+			processingChannel.addInterceptor(myCountingInterceptor);
 		}
 	}
 
@@ -124,7 +120,7 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 	protected Subscription createSubscription(String theCriteria, String thePayload) {
 		Subscription subscription = newSubscription(theCriteria, thePayload);
 
-		MethodOutcome methodOutcome = ourClient.create().resource(subscription).execute();
+		MethodOutcome methodOutcome = myClient.create().resource(subscription).execute();
 		subscription.setId(methodOutcome.getId().getIdPart());
 		mySubscriptionIds.add(methodOutcome.getId());
 
@@ -132,20 +128,19 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 	}
 
 	protected Subscription newSubscription(String theCriteria, String thePayload) {
-		Topic topic = new Topic();
+		SubscriptionTopic topic = new SubscriptionTopic();
 		topic.getResourceTrigger().getQueryCriteria().setCurrent(theCriteria);
 
 		Subscription subscription = new Subscription();
 		subscription.getTopic().setResource(topic);
 		subscription.setReason("Monitor new neonatal function (note, age will be determined by the monitor)");
-		subscription.setStatus(Subscription.SubscriptionStatus.REQUESTED);
+		subscription.setStatus(Enumerations.SubscriptionState.REQUESTED);
 
-		Subscription.SubscriptionChannelComponent channel = subscription.getChannel();
-		channel.getType().addCoding()
+		subscription.getChannelType()
 			.setSystem(CanonicalSubscriptionChannelType.RESTHOOK.getSystem())
 			.setCode(CanonicalSubscriptionChannelType.RESTHOOK.toCode());
-		channel.getPayload().setContentType(thePayload);
-		channel.setEndpoint(ourListenerServerBase);
+		subscription.setContentType(thePayload);
+		subscription.setEndpoint(ourListenerServerBase);
 		return subscription;
 	}
 
@@ -176,7 +171,6 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 
 		return observation;
 	}
-
 
 
 	public static class ObservationListener implements IResourceProvider {
@@ -218,7 +212,7 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void reportTotalSelects() {
 		ourLog.info("Total database select queries: {}", getQueryCount().getSelect());
 	}
@@ -227,10 +221,10 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 		return ourCountHolder.getQueryCountMap().get("");
 	}
 
-	@BeforeClass
+	@BeforeAll
 	public static void startListenerServer() throws Exception {
-		RestfulServer ourListenerRestServer = new RestfulServer(FhirContext.forR5());
-		
+		RestfulServer ourListenerRestServer = new RestfulServer(FhirContext.forCached(FhirVersionEnum.R5));
+
 		ObservationListener obsListener = new ObservationListener();
 		ourListenerRestServer.setResourceProviders(obsListener);
 
@@ -245,11 +239,11 @@ public abstract class BaseSubscriptionsR5Test extends BaseResourceProviderR5Test
 
 		ourListenerServer.setHandler(proxyHandler);
 		JettyUtil.startServer(ourListenerServer);
-        ourListenerPort = JettyUtil.getPortForStartedServer(ourListenerServer);
-        ourListenerServerBase = "http://localhost:" + ourListenerPort + "/fhir/context";
+		ourListenerPort = JettyUtil.getPortForStartedServer(ourListenerServer);
+		ourListenerServerBase = "http://localhost:" + ourListenerPort + "/fhir/context";
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void stopListenerServer() throws Exception {
 		JettyUtil.closeServer(ourListenerServer);
 	}

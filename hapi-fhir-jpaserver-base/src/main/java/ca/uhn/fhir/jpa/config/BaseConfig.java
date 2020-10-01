@@ -2,23 +2,54 @@ package ca.uhn.fhir.jpa.config;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.i18n.HapiLocalizer;
+import ca.uhn.fhir.interceptor.api.IInterceptorBroadcaster;
 import ca.uhn.fhir.interceptor.api.IInterceptorService;
 import ca.uhn.fhir.interceptor.executor.InterceptorService;
+import ca.uhn.fhir.jpa.api.dao.DaoRegistry;
+import ca.uhn.fhir.jpa.api.dao.IDao;
+import ca.uhn.fhir.jpa.batch.BatchJobsConfig;
+import ca.uhn.fhir.jpa.batch.api.IBatchJobSubmitter;
+import ca.uhn.fhir.jpa.batch.config.NonPersistedBatchConfigurer;
+import ca.uhn.fhir.jpa.batch.svc.BatchJobSubmitterImpl;
 import ca.uhn.fhir.jpa.binstore.BinaryAccessProvider;
 import ca.uhn.fhir.jpa.binstore.BinaryStorageInterceptor;
-import ca.uhn.fhir.jpa.bulk.BulkDataExportProvider;
-import ca.uhn.fhir.jpa.bulk.BulkDataExportSvcImpl;
-import ca.uhn.fhir.jpa.bulk.IBulkDataExportSvc;
-import ca.uhn.fhir.jpa.dao.DaoRegistry;
+import ca.uhn.fhir.jpa.bulk.api.IBulkDataExportSvc;
+import ca.uhn.fhir.jpa.bulk.provider.BulkDataExportProvider;
+import ca.uhn.fhir.jpa.bulk.svc.BulkDataExportSvcImpl;
+import ca.uhn.fhir.jpa.dao.HistoryBuilder;
+import ca.uhn.fhir.jpa.dao.HistoryBuilderFactory;
+import ca.uhn.fhir.jpa.dao.ISearchBuilder;
+import ca.uhn.fhir.jpa.dao.SearchBuilder;
+import ca.uhn.fhir.jpa.dao.SearchBuilderFactory;
+import ca.uhn.fhir.jpa.dao.index.DaoResourceLinkResolver;
+import ca.uhn.fhir.jpa.dao.tx.HapiTransactionService;
+import ca.uhn.fhir.jpa.entity.Search;
 import ca.uhn.fhir.jpa.graphql.JpaStorageServices;
+import ca.uhn.fhir.jpa.interceptor.CascadingDeleteInterceptor;
 import ca.uhn.fhir.jpa.interceptor.JpaConsentContextServices;
+import ca.uhn.fhir.jpa.interceptor.OverridePathBasedReferentialIntegrityForDeletesInterceptor;
 import ca.uhn.fhir.jpa.model.sched.ISchedulerService;
+import ca.uhn.fhir.jpa.packages.IHapiPackageCacheManager;
+import ca.uhn.fhir.jpa.packages.IPackageInstallerSvc;
+import ca.uhn.fhir.jpa.packages.JpaPackageCache;
+import ca.uhn.fhir.jpa.packages.NpmJpaValidationSupport;
+import ca.uhn.fhir.jpa.packages.PackageInstallerSvcImpl;
+import ca.uhn.fhir.jpa.partition.IPartitionLookupSvc;
+import ca.uhn.fhir.jpa.partition.IRequestPartitionHelperSvc;
+import ca.uhn.fhir.jpa.partition.PartitionLookupSvcImpl;
+import ca.uhn.fhir.jpa.partition.PartitionManagementProvider;
+import ca.uhn.fhir.jpa.partition.RequestPartitionHelperSvc;
+import ca.uhn.fhir.jpa.provider.DiffProvider;
 import ca.uhn.fhir.jpa.provider.SubscriptionTriggeringProvider;
 import ca.uhn.fhir.jpa.provider.TerminologyUploaderProvider;
 import ca.uhn.fhir.jpa.sched.AutowiringSpringBeanJobFactory;
 import ca.uhn.fhir.jpa.sched.HapiSchedulerServiceImpl;
 import ca.uhn.fhir.jpa.search.DatabaseBackedPagingProvider;
 import ca.uhn.fhir.jpa.search.IStaleSearchDeletingSvc;
+import ca.uhn.fhir.jpa.search.PersistedJpaBundleProvider;
+import ca.uhn.fhir.jpa.search.PersistedJpaBundleProviderFactory;
+import ca.uhn.fhir.jpa.search.PersistedJpaSearchFirstPageBundleProvider;
+import ca.uhn.fhir.jpa.search.SearchCoordinatorSvcImpl;
 import ca.uhn.fhir.jpa.search.StaleSearchDeletingSvcImpl;
 import ca.uhn.fhir.jpa.search.cache.DatabaseSearchCacheSvcImpl;
 import ca.uhn.fhir.jpa.search.cache.DatabaseSearchResultCacheSvcImpl;
@@ -26,29 +57,42 @@ import ca.uhn.fhir.jpa.search.cache.ISearchCacheSvc;
 import ca.uhn.fhir.jpa.search.cache.ISearchResultCacheSvc;
 import ca.uhn.fhir.jpa.search.reindex.IResourceReindexingSvc;
 import ca.uhn.fhir.jpa.search.reindex.ResourceReindexingSvcImpl;
-import ca.uhn.fhir.jpa.searchparam.registry.ISearchParamRegistry;
-import ca.uhn.fhir.jpa.searchparam.registry.SearchParamRegistryImpl;
-import ca.uhn.fhir.jpa.subscription.SubscriptionActivatingInterceptor;
-import ca.uhn.fhir.jpa.subscription.dbmatcher.CompositeInMemoryDaoSubscriptionMatcher;
-import ca.uhn.fhir.jpa.subscription.dbmatcher.DaoSubscriptionMatcher;
-import ca.uhn.fhir.jpa.subscription.module.cache.LinkedBlockingQueueSubscribableChannelFactory;
-import ca.uhn.fhir.jpa.subscription.module.channel.ISubscribableChannelFactory;
-import ca.uhn.fhir.jpa.subscription.module.matcher.ISubscriptionMatcher;
-import ca.uhn.fhir.jpa.subscription.module.matcher.InMemorySubscriptionMatcher;
+import ca.uhn.fhir.jpa.searchparam.config.SearchParamConfig;
+import ca.uhn.fhir.jpa.searchparam.extractor.IResourceLinkResolver;
+import ca.uhn.fhir.jpa.util.MemoryCacheService;
+import ca.uhn.fhir.jpa.validation.ValidationSettings;
+import ca.uhn.fhir.rest.api.server.RequestDetails;
 import ca.uhn.fhir.rest.server.interceptor.consent.IConsentContextServices;
+import ca.uhn.fhir.rest.server.interceptor.partition.RequestTenantPartitionInterceptor;
 import org.hibernate.jpa.HibernatePersistenceProvider;
+import org.hl7.fhir.instance.model.api.IBaseResource;
+import org.hl7.fhir.utilities.cache.FilesystemPackageCacheManager;
 import org.hl7.fhir.utilities.graphql.IGraphQLStorageServices;
+import org.springframework.batch.core.configuration.annotation.BatchConfigurer;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Scope;
 import org.springframework.core.env.Environment;
 import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ConcurrentTaskScheduler;
 import org.springframework.scheduling.concurrent.ScheduledExecutorFactoryBean;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
+
+import javax.annotation.Nullable;
+import java.util.Date;
 
 /*
  * #%L
@@ -78,15 +122,38 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 	@ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, value = WebSocketConfigurer.class),
 	@ComponentScan.Filter(type = FilterType.REGEX, pattern = ".*\\.test\\..*"),
 	@ComponentScan.Filter(type = FilterType.REGEX, pattern = ".*Test.*"),
-	@ComponentScan.Filter(type = FilterType.REGEX, pattern = "ca.uhn.fhir.jpa.subscription.module.standalone.*")})
+	@ComponentScan.Filter(type = FilterType.REGEX, pattern = "ca.uhn.fhir.jpa.subscription.*"),
+	@ComponentScan.Filter(type = FilterType.REGEX, pattern = "ca.uhn.fhir.jpa.searchparam.*"),
+	@ComponentScan.Filter(type = FilterType.REGEX, pattern = "ca.uhn.fhir.jpa.empi.*"),
+	@ComponentScan.Filter(type = FilterType.REGEX, pattern = "ca.uhn.fhir.jpa.batch.*")
+})
+@Import({
+	SearchParamConfig.class, BatchJobsConfig.class
+})
+@EnableBatchProcessing
 public abstract class BaseConfig {
 
+	public static final String JPA_VALIDATION_SUPPORT_CHAIN = "myJpaValidationSupportChain";
+	public static final String JPA_VALIDATION_SUPPORT = "myJpaValidationSupport";
 	public static final String TASK_EXECUTOR_NAME = "hapiJpaTaskExecutor";
 	public static final String GRAPHQL_PROVIDER_NAME = "myGraphQLProvider";
+	public static final String PERSISTED_JPA_BUNDLE_PROVIDER = "PersistedJpaBundleProvider";
+	public static final String PERSISTED_JPA_BUNDLE_PROVIDER_BY_SEARCH = "PersistedJpaBundleProvider_BySearch";
+	public static final String PERSISTED_JPA_SEARCH_FIRST_PAGE_BUNDLE_PROVIDER = "PersistedJpaSearchFirstPageBundleProvider";
+	public static final String SEARCH_BUILDER = "SearchBuilder";
+	public static final String HISTORY_BUILDER = "HistoryBuilder";
 	private static final String HAPI_DEFAULT_SCHEDULER_GROUP = "HAPI";
 
 	@Autowired
 	protected Environment myEnv;
+
+	@Autowired
+	private DaoRegistry myDaoRegistry;
+
+	@Bean
+	public BatchConfigurer batchConfigurer() {
+		return new NonPersistedBatchConfigurer();
+	}
 
 	@Bean("myDaoRegistry")
 	public DaoRegistry daoRegistry() {
@@ -96,6 +163,17 @@ public abstract class BaseConfig {
 	@Bean
 	public DatabaseBackedPagingProvider databaseBackedPagingProvider() {
 		return new DatabaseBackedPagingProvider();
+	}
+
+	@Bean
+	public IBatchJobSubmitter batchJobSubmitter() {
+		return new BatchJobSubmitterImpl();
+	}
+
+	@Lazy
+	@Bean
+	public CascadingDeleteInterceptor cascadingDeleteInterceptor(FhirContext theFhirContext, DaoRegistry theDaoRegistry, IInterceptorBroadcaster theInterceptorBroadcaster) {
+		return new CascadingDeleteInterceptor(theFhirContext, theDaoRegistry, theInterceptorBroadcaster);
 	}
 
 	/**
@@ -125,21 +203,10 @@ public abstract class BaseConfig {
 		return b;
 	}
 
-	@Bean
-	public ISearchParamRegistry searchParamRegistry() {
-		return new SearchParamRegistryImpl();
-	}
-
-
 	@Bean(name = "mySubscriptionTriggeringProvider")
 	@Lazy
 	public SubscriptionTriggeringProvider subscriptionTriggeringProvider() {
 		return new SubscriptionTriggeringProvider();
-	}
-
-	@Bean
-	public SubscriptionActivatingInterceptor subscriptionActivatingInterceptor() {
-		return new SubscriptionActivatingInterceptor();
 	}
 
 	@Bean(name = "myAttachmentBinaryAccessProvider")
@@ -152,6 +219,36 @@ public abstract class BaseConfig {
 	@Lazy
 	public BinaryStorageInterceptor binaryStorageInterceptor() {
 		return new BinaryStorageInterceptor();
+	}
+
+	@Bean
+	public MemoryCacheService memoryCacheService() {
+		return new MemoryCacheService();
+	}
+
+	@Bean
+	@Primary
+	public IResourceLinkResolver daoResourceLinkResolver() {
+		return new DaoResourceLinkResolver();
+	}
+
+	@Bean
+	public IHapiPackageCacheManager packageCacheManager() {
+		JpaPackageCache retVal = new JpaPackageCache();
+		retVal.getPackageServers().clear();
+		retVal.getPackageServers().add(FilesystemPackageCacheManager.PRIMARY_SERVER);
+		retVal.getPackageServers().add(FilesystemPackageCacheManager.SECONDARY_SERVER);
+		return retVal;
+	}
+
+	@Bean
+	public NpmJpaValidationSupport npmJpaValidationSupport() {
+		return new NpmJpaValidationSupport();
+	}
+
+	@Bean
+	public ValidationSettings validationSettings() {
+		return new ValidationSettings();
 	}
 
 	@Bean
@@ -181,6 +278,18 @@ public abstract class BaseConfig {
 	}
 
 	@Bean
+	public TaskExecutor jobLaunchingTaskExecutor() {
+		ThreadPoolTaskExecutor asyncTaskExecutor = new ThreadPoolTaskExecutor();
+		asyncTaskExecutor.setCorePoolSize(5);
+		asyncTaskExecutor.setMaxPoolSize(10);
+		asyncTaskExecutor.setQueueCapacity(500);
+		asyncTaskExecutor.setThreadNamePrefix("JobLauncher-");
+		asyncTaskExecutor.initialize();
+		return asyncTaskExecutor;
+	}
+
+
+	@Bean
 	public IResourceReindexingSvc resourceReindexingSvc() {
 		return new ResourceReindexingSvcImpl();
 	}
@@ -191,37 +300,29 @@ public abstract class BaseConfig {
 	}
 
 	@Bean
-	public InMemorySubscriptionMatcher inMemorySubscriptionMatcher() {
-		return new InMemorySubscriptionMatcher();
-	}
-
-	@Bean
-	public DaoSubscriptionMatcher daoSubscriptionMatcher() {
-		return new DaoSubscriptionMatcher();
-	}
-
-	/**
-	 * Create a @Primary @Bean if you need a different implementation
-	 */
-	@Bean
-	public ISubscribableChannelFactory linkedBlockingQueueSubscribableChannelFactory() {
-		return new LinkedBlockingQueueSubscribableChannelFactory();
-	}
-
-	@Bean
-	@Primary
-	public ISubscriptionMatcher subscriptionMatcherCompositeInMemoryDatabase() {
-		return new CompositeInMemoryDaoSubscriptionMatcher(daoSubscriptionMatcher(), inMemorySubscriptionMatcher());
-	}
-
-	@Bean
 	public HapiFhirHibernateJpaDialect hibernateJpaDialect() {
 		return new HapiFhirHibernateJpaDialect(fhirContext().getLocalizer());
 	}
 
 	@Bean
+	@Lazy
+	public OverridePathBasedReferentialIntegrityForDeletesInterceptor overridePathBasedReferentialIntegrityForDeletesInterceptor() {
+		return new OverridePathBasedReferentialIntegrityForDeletesInterceptor();
+	}
+
+	@Bean
+	public IRequestPartitionHelperSvc requestPartitionHelperService() {
+		return new RequestPartitionHelperSvc();
+	}
+
+	@Bean
 	public PersistenceExceptionTranslationPostProcessor persistenceExceptionTranslationPostProcessor() {
 		return new PersistenceExceptionTranslationPostProcessor();
+	}
+
+	@Bean
+	public HapiTransactionService hapiTransactionService() {
+		return new HapiTransactionService();
 	}
 
 	@Bean
@@ -233,7 +334,12 @@ public abstract class BaseConfig {
 	 * Subclasses may override
 	 */
 	protected boolean isSupported(String theResourceType) {
-		return daoRegistry().getResourceDaoOrNull(theResourceType) != null;
+		return myDaoRegistry.getResourceDaoOrNull(theResourceType) != null;
+	}
+
+	@Bean
+	public IPackageInstallerSvc npmInstallerSvc() {
+		return new PackageInstallerSvcImpl();
 	}
 
 	@Bean
@@ -243,9 +349,32 @@ public abstract class BaseConfig {
 
 	@Bean
 	@Lazy
+	public DiffProvider diffProvider() {
+		return new DiffProvider();
+	}
+
+	@Bean
+	@Lazy
+	public IPartitionLookupSvc partitionConfigSvc() {
+		return new PartitionLookupSvcImpl();
+	}
+
+	@Bean
+	@Lazy
+	public PartitionManagementProvider partitionManagementProvider() {
+		return new PartitionManagementProvider();
+	}
+
+	@Bean
+	@Lazy
+	public RequestTenantPartitionInterceptor requestTenantPartitionInterceptor() {
+		return new RequestTenantPartitionInterceptor();
+	}
+
+	@Bean
+	@Lazy
 	public TerminologyUploaderProvider terminologyUploaderProvider() {
-		TerminologyUploaderProvider retVal = new TerminologyUploaderProvider();
-		return retVal;
+		return new TerminologyUploaderProvider();
 	}
 
 	@Bean
@@ -271,6 +400,51 @@ public abstract class BaseConfig {
 	}
 
 
+	@Bean
+	public PersistedJpaBundleProviderFactory persistedJpaBundleProviderFactory() {
+		return new PersistedJpaBundleProviderFactory();
+	}
+
+	@Bean(name = PERSISTED_JPA_BUNDLE_PROVIDER)
+	@Scope("prototype")
+	public PersistedJpaBundleProvider persistedJpaBundleProvider(RequestDetails theRequest, String theUuid) {
+		return new PersistedJpaBundleProvider(theRequest, theUuid);
+	}
+
+	@Bean(name = PERSISTED_JPA_BUNDLE_PROVIDER_BY_SEARCH)
+	@Scope("prototype")
+	public PersistedJpaBundleProvider persistedJpaBundleProvider(RequestDetails theRequest, Search theSearch) {
+		return new PersistedJpaBundleProvider(theRequest, theSearch);
+	}
+
+	@Bean(name = PERSISTED_JPA_SEARCH_FIRST_PAGE_BUNDLE_PROVIDER)
+	@Scope("prototype")
+	public PersistedJpaSearchFirstPageBundleProvider persistedJpaSearchFirstPageBundleProvider(RequestDetails theRequest, Search theSearch, SearchCoordinatorSvcImpl.SearchTask theSearchTask, ISearchBuilder theSearchBuilder) {
+		return new PersistedJpaSearchFirstPageBundleProvider(theSearch, theSearchTask, theSearchBuilder, theRequest);
+	}
+
+	@Bean
+	public SearchBuilderFactory searchBuilderFactory() {
+		return new SearchBuilderFactory();
+	}
+
+	@Bean(name = SEARCH_BUILDER)
+	@Scope("prototype")
+	public SearchBuilder persistedJpaSearchFirstPageBundleProvider(IDao theDao, String theResourceName, Class<? extends IBaseResource> theResourceType) {
+		return new SearchBuilder(theDao, theResourceName, theResourceType);
+	}
+
+	@Bean
+	public HistoryBuilderFactory historyBuilderFactory() {
+		return new HistoryBuilderFactory();
+	}
+
+	@Bean(name = HISTORY_BUILDER)
+	@Scope("prototype")
+	public HistoryBuilder persistedJpaSearchFirstPageBundleProvider(@Nullable String theResourceType, @Nullable Long theResourceId, @Nullable Date theRangeStartInclusive, @Nullable Date theRangeEndInclusive) {
+		return new HistoryBuilder(theResourceType, theResourceId, theRangeStartInclusive, theRangeEndInclusive);
+	}
+
 	public static void configureEntityManagerFactory(LocalContainerEntityManagerFactoryBean theFactory, FhirContext theCtx) {
 		theFactory.setJpaDialect(hibernateJpaDialect(theCtx.getLocalizer()));
 		theFactory.setPackagesToScan("ca.uhn.fhir.jpa.model.entity", "ca.uhn.fhir.jpa.entity");
@@ -280,6 +454,4 @@ public abstract class BaseConfig {
 	private static HapiFhirHibernateJpaDialect hibernateJpaDialect(HapiLocalizer theLocalizer) {
 		return new HapiFhirHibernateJpaDialect(theLocalizer);
 	}
-
-
 }

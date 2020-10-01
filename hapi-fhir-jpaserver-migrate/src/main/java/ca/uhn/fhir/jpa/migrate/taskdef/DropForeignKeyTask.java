@@ -36,7 +36,7 @@ import java.util.Set;
 
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
-public class DropForeignKeyTask extends BaseTableTask<DropForeignKeyTask> {
+public class DropForeignKeyTask extends BaseTableTask {
 
 	private static final Logger ourLog = LoggerFactory.getLogger(DropForeignKeyTask.class);
 	private String myConstraintName;
@@ -101,14 +101,13 @@ public class DropForeignKeyTask extends BaseTableTask<DropForeignKeyTask> {
 		List<String> sqls = new ArrayList<>();
 		switch (theDriverType) {
 			case MYSQL_5_7:
+			case MARIADB_10_1:
 				// Lousy MYQL....
-				sqls.add("alter table " + theTableName + " drop constraint " + theConstraintName);
-				sqls.add("alter table " + theTableName + " drop index " + theConstraintName);
+				sqls.add("alter table " + theTableName + " drop foreign key " + theConstraintName);
 				break;
 			case MYSQL_8_0:
 				sqls.add("alter table " + theTableName + " drop foreign key " + theConstraintName);
 				break;
-			case MARIADB_10_1:
 			case POSTGRES_9_4:
 			case DERBY_EMBEDDED:
 			case H2_EMBEDDED:

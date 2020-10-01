@@ -2,6 +2,7 @@ package ca.uhn.fhir.jpa.searchparam.matcher;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.RuntimeSearchParam;
+import ca.uhn.fhir.jpa.model.config.PartitionSettings;
 import ca.uhn.fhir.jpa.model.entity.ModelConfig;
 import ca.uhn.fhir.jpa.model.entity.ResourceIndexedSearchParamDate;
 import ca.uhn.fhir.jpa.searchparam.MatchUrlService;
@@ -16,66 +17,44 @@ import org.hl7.fhir.r5.model.BaseDateTimeType;
 import org.hl7.fhir.r5.model.CodeableConcept;
 import org.hl7.fhir.r5.model.DateTimeType;
 import org.hl7.fhir.r5.model.Observation;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Date;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
-@RunWith(SpringRunner.class)
+@ExtendWith(SpringExtension.class)
 public class InMemoryResourceMatcherR5Test {
 	public static final String OBSERVATION_DATE = "1970-10-17";
+	public static final String OBSERVATION_CODE = "MATCH";
 	private static final String EARLY_DATE = "1965-08-09";
 	private static final String LATE_DATE = "2000-06-29";
-	public static final String OBSERVATION_CODE = "MATCH";
 	private static final String SOURCE_URI = "urn:source:0";
 	private static final String REQUEST_ID = "a_request_id";
 	private static final String TEST_SOURCE = SOURCE_URI + "#" + REQUEST_ID;
-
-	@Autowired
-	private InMemoryResourceMatcher myInMemoryResourceMatcher;
-
 	@MockBean
 	ISearchParamRegistry mySearchParamRegistry;
+	@Autowired
+	private InMemoryResourceMatcher myInMemoryResourceMatcher;
 	private Observation myObservation;
 	private ResourceIndexedSearchParams mySearchParams;
 
-	@Configuration
-	public static class SpringConfig {
-		@Bean
-		InMemoryResourceMatcher inMemoryResourceMatcher() {
-			return new InMemoryResourceMatcher();
-		}
-
-		@Bean
-		MatchUrlService matchUrlService() {
-			return new MatchUrlService();
-		}
-
-		@Bean
-		FhirContext fhirContext() {
-			return FhirContext.forR5();
-		}
-
-		@Bean
-		ModelConfig modelConfig() {
-			return new ModelConfig();
-		}
-	}
-
-	@Before
+	@BeforeEach
 	public void before() {
 		RuntimeSearchParam dateSearchParam = new RuntimeSearchParam(null, null, null, null, "Observation.effective", RestSearchParameterTypeEnum.DATE, null, null, null, RuntimeSearchParam.RuntimeSearchParamStatusEnum.ACTIVE);
 		when(mySearchParamRegistry.getSearchParamByName(any(), eq("date"))).thenReturn(dateSearchParam);
@@ -148,8 +127,8 @@ public class InMemoryResourceMatcherR5Test {
 
 	@Test
 	public void testDateSupportedOps() {
-		testDateSupportedOp(ParamPrefixEnum.GREATERTHAN_OR_EQUALS, true, true, false);
 		testDateSupportedOp(ParamPrefixEnum.GREATERTHAN, true, false, false);
+		testDateSupportedOp(ParamPrefixEnum.GREATERTHAN_OR_EQUALS, true, true, false);
 		testDateSupportedOp(ParamPrefixEnum.EQUAL, false, true, false);
 		testDateSupportedOp(ParamPrefixEnum.LESSTHAN_OR_EQUALS, false, true, true);
 		testDateSupportedOp(ParamPrefixEnum.LESSTHAN, false, false, true);
@@ -159,17 +138,17 @@ public class InMemoryResourceMatcherR5Test {
 		String equation = "date=" + theOperator.getValue();
 		{
 			InMemoryMatchResult result = myInMemoryResourceMatcher.match(equation + EARLY_DATE, myObservation, mySearchParams);
-			assertTrue(result.getUnsupportedReason(), result.supported());
+			assertTrue(result.supported(), result.getUnsupportedReason());
 			assertEquals(result.matched(), theEarly);
 		}
 		{
 			InMemoryMatchResult result = myInMemoryResourceMatcher.match(equation + OBSERVATION_DATE, myObservation, mySearchParams);
-			assertTrue(result.getUnsupportedReason(), result.supported());
+			assertTrue(result.supported(), result.getUnsupportedReason());
 			assertEquals(result.matched(), theSame);
 		}
 		{
 			InMemoryMatchResult result = myInMemoryResourceMatcher.match(equation + LATE_DATE, myObservation, mySearchParams);
-			assertTrue(result.getUnsupportedReason(), result.supported());
+			assertTrue(result.supported(), result.getUnsupportedReason());
 			assertEquals(result.matched(), theLater);
 		}
 	}
@@ -177,7 +156,7 @@ public class InMemoryResourceMatcherR5Test {
 	@Test
 	public void testNowPast() {
 		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=lt" + BaseDateTimeDt.NOW_DATE_CONSTANT, myObservation, mySearchParams);
-		assertTrue(result.getUnsupportedReason(), result.supported());
+		assertTrue(result.supported(), result.getUnsupportedReason());
 		assertTrue(result.matched());
 	}
 
@@ -189,7 +168,7 @@ public class InMemoryResourceMatcherR5Test {
 		ResourceIndexedSearchParams searchParams = extractDateSearchParam(futureObservation);
 
 		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=gt" + BaseDateTimeDt.NOW_DATE_CONSTANT, futureObservation, searchParams);
-		assertTrue(result.getUnsupportedReason(), result.supported());
+		assertTrue(result.supported(), result.getUnsupportedReason());
 		assertTrue(result.matched());
 	}
 
@@ -201,16 +180,101 @@ public class InMemoryResourceMatcherR5Test {
 		ResourceIndexedSearchParams searchParams = extractDateSearchParam(futureObservation);
 
 		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=gt" + BaseDateTimeDt.NOW_DATE_CONSTANT, futureObservation, searchParams);
-		assertTrue(result.getUnsupportedReason(), result.supported());
+		assertTrue(result.supported(), result.getUnsupportedReason());
 		assertTrue(result.matched());
 	}
+
+	@Test
+	public void testTodayPast() {
+		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=lt" + BaseDateTimeDt.TODAY_DATE_CONSTANT, myObservation, mySearchParams);
+		assertTrue(result.supported(), result.getUnsupportedReason());
+		assertTrue(result.matched());
+	}
+
+	@Test
+	public void testTodayNextWeek() {
+		Observation futureObservation = new Observation();
+		Instant nextWeek = Instant.now().plus(Duration.ofDays(7));
+		futureObservation.setEffective(new DateTimeType(Date.from(nextWeek)));
+		ResourceIndexedSearchParams searchParams = extractDateSearchParam(futureObservation);
+
+		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=gt" + BaseDateTimeDt.TODAY_DATE_CONSTANT, futureObservation, searchParams);
+		assertTrue(result.supported(), result.getUnsupportedReason());
+		assertTrue(result.matched());
+	}
+
+	@Test
+	public void testTodayTomorrow() {
+		Observation futureObservation = new Observation();
+		Instant nextWeek = Instant.now().plus(Duration.ofDays(1));
+		futureObservation.setEffective(new DateTimeType(Date.from(nextWeek)));
+		ResourceIndexedSearchParams searchParams = extractDateSearchParam(futureObservation);
+
+		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=gt" + BaseDateTimeDt.TODAY_DATE_CONSTANT, futureObservation, searchParams);
+		assertTrue(result.supported(), result.getUnsupportedReason());
+		assertTrue(result.matched());
+	}
+
+	@Test
+	public void testTodayYesterday() {
+		Observation futureObservation = new Observation();
+		Instant nextWeek = Instant.now().minus(Duration.ofDays(1));
+		futureObservation.setEffective(new DateTimeType(Date.from(nextWeek)));
+		ResourceIndexedSearchParams searchParams = extractDateSearchParam(futureObservation);
+
+		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=gt" + BaseDateTimeDt.TODAY_DATE_CONSTANT, futureObservation, searchParams);
+		assertTrue(result.supported(), result.getUnsupportedReason());
+		assertFalse(result.matched());
+	}
+
+
+	@Test
+	public void testTodayNextMinute() {
+		Observation futureObservation = new Observation();
+		ZonedDateTime now = ZonedDateTime.now();
+		if (now.getHour() == 23 && now.getMinute() == 59) {
+			// this test fails between 23:59 and midnight...
+			return;
+		}
+		Instant nextMinute = now.toInstant().plus(Duration.ofMinutes(1));
+		futureObservation.setEffective(new DateTimeType(Date.from(nextMinute)));
+		ResourceIndexedSearchParams searchParams = extractDateSearchParam(futureObservation);
+
+		InMemoryMatchResult result = myInMemoryResourceMatcher.match("date=gt" + BaseDateTimeDt.TODAY_DATE_CONSTANT, futureObservation, searchParams);
+		assertTrue(result.supported(), result.getUnsupportedReason());
+		assertFalse(result.matched());
+	}
+
 
 	private ResourceIndexedSearchParams extractDateSearchParam(Observation theObservation) {
 		ResourceIndexedSearchParams retval = new ResourceIndexedSearchParams();
 		BaseDateTimeType dateValue = (BaseDateTimeType) theObservation.getEffective();
-		ResourceIndexedSearchParamDate dateParam = new ResourceIndexedSearchParamDate("Patient", "date", dateValue.getValue(), dateValue.getValue(), dateValue.getValueAsString());
+		ResourceIndexedSearchParamDate dateParam = new ResourceIndexedSearchParamDate(new PartitionSettings(), "Patient", "date", dateValue.getValue(), dateValue.getValueAsString(), dateValue.getValue(), dateValue.getValueAsString(), dateValue.getValueAsString());
 		retval.myDateParams.add(dateParam);
 		return retval;
+	}
+
+	@Configuration
+	public static class SpringConfig {
+		@Bean
+		InMemoryResourceMatcher inMemoryResourceMatcher() {
+			return new InMemoryResourceMatcher();
+		}
+
+		@Bean
+		MatchUrlService matchUrlService() {
+			return new MatchUrlService();
+		}
+
+		@Bean
+		FhirContext fhirContext() {
+			return FhirContext.forR5();
+		}
+
+		@Bean
+		ModelConfig modelConfig() {
+			return new ModelConfig();
+		}
 	}
 
 }

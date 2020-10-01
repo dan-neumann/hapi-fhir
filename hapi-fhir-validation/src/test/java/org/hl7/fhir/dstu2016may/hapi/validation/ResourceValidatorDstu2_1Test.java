@@ -11,22 +11,34 @@ import ca.uhn.fhir.validation.ValidationResult;
 import ca.uhn.fhir.validation.schematron.SchematronBaseValidator;
 import org.apache.commons.io.IOUtils;
 import org.hamcrest.core.StringContains;
-import org.hl7.fhir.dstu2016may.model.*;
-import org.junit.AfterClass;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.hl7.fhir.common.hapi.validation.validator.FhirInstanceValidator;
+import org.hl7.fhir.dstu2016may.model.CodeableConcept;
+import org.hl7.fhir.dstu2016may.model.Coding;
+import org.hl7.fhir.dstu2016may.model.DateType;
+import org.hl7.fhir.dstu2016may.model.OperationOutcome;
+import org.hl7.fhir.dstu2016may.model.Patient;
+import org.hl7.fhir.dstu2016may.model.Reference;
+import org.hl7.fhir.dstu2016may.model.StringType;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.stringContainsInOrder;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class ResourceValidatorDstu2_1Test {
 
 	private static FhirContext ourCtx = FhirContext.forDstu2_1();
 	private static final org.slf4j.Logger ourLog = org.slf4j.LoggerFactory.getLogger(ResourceValidatorDstu2_1Test.class);
 
-	@AfterClass
+	@AfterAll
 	
 	public static void afterClassClearContext() {
 		TestUtil.clearAllStaticFieldsForUnitTest();
@@ -60,7 +72,7 @@ public class ResourceValidatorDstu2_1Test {
 			parser.parseResource(encoded);
 			fail();
 		} catch (DataFormatException e) {
-			assertEquals("DataFormatException at [[row,col {unknown-source}]: [2,4]]: Invalid attribute value \"2000-15-31\": Invalid date/time format: \"2000-15-31\"", e.getMessage());
+			assertEquals("DataFormatException at [[row,col {unknown-source}]: [2,4]]: [element=\"birthDate\"] Invalid attribute value \"2000-15-31\": Invalid date/time format: \"2000-15-31\"", e.getMessage());
 		}
 	}
 
@@ -103,7 +115,7 @@ public class ResourceValidatorDstu2_1Test {
 		FhirValidator val = ourCtx.newValidator();
 		val.registerValidatorModule(new SchemaBaseValidator(ourCtx));
 		val.registerValidatorModule(new SchematronBaseValidator(ourCtx));
-		val.registerValidatorModule(new FhirInstanceValidator());
+		val.registerValidatorModule(new FhirInstanceValidator(ourCtx));
 
 		ValidationResult result = val.validateWithResult(messageString);
 
@@ -119,12 +131,12 @@ public class ResourceValidatorDstu2_1Test {
 	 * Per email from Jon Zammit
 	 */
 	@Test
-	@Ignore
+	@Disabled
 	public void testValidateQuestionnaire() throws IOException {
 		String input = IOUtils.toString(getClass().getResourceAsStream("/questionnaire_jon_z_20160506.xml"));
 
 		FhirValidator val = ourCtx.newValidator();
-		val.registerValidatorModule(new FhirInstanceValidator());
+		val.registerValidatorModule(new FhirInstanceValidator(ourCtx));
 
 		ValidationResult result = val.validateWithResult(input);
 
@@ -170,7 +182,7 @@ public class ResourceValidatorDstu2_1Test {
 		FhirValidator val = ourCtx.newValidator();
 		val.registerValidatorModule(new SchemaBaseValidator(ourCtx));
 		val.registerValidatorModule(new SchematronBaseValidator(ourCtx));
-		val.registerValidatorModule(new FhirInstanceValidator());
+		val.registerValidatorModule(new FhirInstanceValidator(ourCtx));
 
 		ValidationResult result = val.validateWithResult(messageString);
 

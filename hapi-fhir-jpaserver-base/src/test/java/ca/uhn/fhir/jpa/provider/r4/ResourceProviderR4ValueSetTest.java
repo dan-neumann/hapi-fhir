@@ -1,17 +1,21 @@
 package ca.uhn.fhir.jpa.provider.r4;
 
-import ca.uhn.fhir.jpa.dao.DaoConfig;
-import ca.uhn.fhir.jpa.dao.IFhirResourceDao;
+import ca.uhn.fhir.jpa.api.config.DaoConfig;
+import ca.uhn.fhir.jpa.api.dao.IFhirResourceDao;
 import ca.uhn.fhir.jpa.dao.data.IResourceTableDao;
-import ca.uhn.fhir.jpa.entity.*;
+import ca.uhn.fhir.jpa.entity.TermCodeSystemVersion;
+import ca.uhn.fhir.jpa.entity.TermConcept;
 import ca.uhn.fhir.jpa.entity.TermConceptParentChildLink.RelationshipTypeEnum;
-import ca.uhn.fhir.jpa.model.cross.ResourcePersistentId;
+import ca.uhn.fhir.jpa.entity.TermValueSet;
+import ca.uhn.fhir.jpa.entity.TermValueSetConcept;
+import ca.uhn.fhir.jpa.entity.TermValueSetConceptDesignation;
+import ca.uhn.fhir.jpa.entity.TermValueSetPreExpansionStatusEnum;
 import ca.uhn.fhir.jpa.model.entity.ResourceTable;
 import ca.uhn.fhir.jpa.term.api.ITermCodeSystemStorageSvc;
+import ca.uhn.fhir.rest.api.server.storage.ResourcePersistentId;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.fhir.rest.server.servlet.ServletRequestDetails;
-import ca.uhn.fhir.util.TestUtil;
 import ca.uhn.fhir.util.UrlUtil;
 import com.google.common.base.Charsets;
 import org.apache.commons.io.IOUtils;
@@ -21,15 +25,24 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.hl7.fhir.instance.model.api.IIdType;
-import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.BooleanType;
+import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.CodeSystem;
 import org.hl7.fhir.r4.model.CodeSystem.CodeSystemContentMode;
 import org.hl7.fhir.r4.model.CodeSystem.ConceptDefinitionComponent;
+import org.hl7.fhir.r4.model.CodeType;
+import org.hl7.fhir.r4.model.Enumerations;
+import org.hl7.fhir.r4.model.IdType;
+import org.hl7.fhir.r4.model.IntegerType;
+import org.hl7.fhir.r4.model.Parameters;
+import org.hl7.fhir.r4.model.StringType;
+import org.hl7.fhir.r4.model.UriType;
+import org.hl7.fhir.r4.model.ValueSet;
 import org.hl7.fhir.r4.model.ValueSet.ConceptSetComponent;
 import org.hl7.fhir.r4.model.ValueSet.FilterOperator;
 import org.hl7.fhir.r4.model.codesystems.HttpVerb;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -41,8 +54,16 @@ import java.util.Optional;
 
 import static ca.uhn.fhir.jpa.dao.r4.FhirResourceDaoR4TerminologyTest.URL_MY_CODE_SYSTEM;
 import static ca.uhn.fhir.jpa.dao.r4.FhirResourceDaoR4TerminologyTest.URL_MY_VALUE_SET;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.containsStringIgnoringCase;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.stringContainsInOrder;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
@@ -77,11 +98,11 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 	private void persistCodeSystem(CodeSystem theCodeSystem) {
 		new TransactionTemplate(myTxManager).execute(new TransactionCallbackWithoutResult() {
-				@Override
-				protected void doInTransactionWithoutResult(@Nonnull TransactionStatus theStatus) {
-					myExtensionalCsId = myCodeSystemDao.create(theCodeSystem, mySrd).getId().toUnqualifiedVersionless();
-				}
-			});
+			@Override
+			protected void doInTransactionWithoutResult(@Nonnull TransactionStatus theStatus) {
+				myExtensionalCsId = myCodeSystemDao.create(theCodeSystem, mySrd).getId().toUnqualifiedVersionless();
+			}
+		});
 		myCodeSystemDao.readEntity(myExtensionalCsId, null).getId();
 	}
 
@@ -135,7 +156,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		createLocalVsWithUnknownCode(codeSystem);
 	}
 
-	private void createLocalCsAndVs() {
+	private void createLocalCs() {
 		CodeSystem codeSystem = new CodeSystem();
 		codeSystem.setUrl(URL_MY_CODE_SYSTEM);
 		codeSystem.setContent(CodeSystemContentMode.COMPLETE);
@@ -192,7 +213,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	public void testExpandById() throws Exception {
 		loadAndPersistCodeSystemAndValueSet();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myExtensionalVsId)
 			.named("expand")
@@ -225,7 +246,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		loadAndPersistCodeSystemAndValueSet();
 		myTermSvc.preExpandDeferredValueSetsToTerminologyTables();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myExtensionalVsId)
 			.named("expand")
@@ -255,7 +276,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	public void testExpandByIdWithFilter() throws Exception {
 		loadAndPersistCodeSystemAndValueSet();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myExtensionalVsId)
 			.named("expand")
@@ -277,7 +298,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		loadAndPersistCodeSystemAndValueSet();
 		myTermSvc.preExpandDeferredValueSetsToTerminologyTables();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myExtensionalVsId)
 			.named("expand")
@@ -296,7 +317,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	public void testExpandByUrl() throws Exception {
 		loadAndPersistCodeSystemAndValueSet();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -317,7 +338,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		loadAndPersistCodeSystemAndValueSet();
 
 		try {
-			ourClient
+			myClient
 				.operation()
 				.onType(ValueSet.class)
 				.named("expand")
@@ -336,7 +357,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		loadAndPersistCodeSystemAndValueSet();
 		myTermSvc.preExpandDeferredValueSetsToTerminologyTables();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -360,7 +381,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		myTermSvc.preExpandDeferredValueSetsToTerminologyTables();
 
 		try {
-			ourClient
+			myClient
 				.operation()
 				.onType(ValueSet.class)
 				.named("expand")
@@ -378,7 +399,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 		ValueSet toExpand = loadResourceFromClasspath(ValueSet.class, "/extensional-case-3-vs.xml");
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -403,7 +424,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 		ValueSet toExpand = loadResourceFromClasspath(ValueSet.class, "/extensional-case-3-vs.xml");
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -424,7 +445,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		createLocalVsPointingAtBuiltInCodeSystem();
 		assertNotNull(myLocalValueSetId);
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -444,7 +465,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		assertNotNull(myLocalVs);
 		myLocalVs.setId("");
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -466,7 +487,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		loadAndPersistCodeSystemAndValueSet();
 
 		try {
-			ourClient
+			myClient
 				.operation()
 				.onType(ValueSet.class)
 				.named("expand")
@@ -479,7 +500,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 		try {
 			ValueSet toExpand = loadResourceFromClasspath(ValueSet.class, "/r4/extensional-case-r4.xml");
-			ourClient
+			myClient
 				.operation()
 				.onType(ValueSet.class)
 				.named("expand")
@@ -493,7 +514,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 		try {
 			ValueSet toExpand = loadResourceFromClasspath(ValueSet.class, "/r4/extensional-case.xml");
-			ourClient
+			myClient
 				.operation()
 				.onInstance(myExtensionalVsId)
 				.named("expand")
@@ -506,7 +527,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		}
 
 		try {
-			ourClient
+			myClient
 				.operation()
 				.onInstance(myExtensionalVsId)
 				.named("expand")
@@ -518,7 +539,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		}
 
 		try {
-			ourClient
+			myClient
 				.operation()
 				.onInstance(myExtensionalVsId)
 				.named("expand")
@@ -535,7 +556,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		createLocalVsPointingAtBuiltInCodeSystem();
 		assertNotNull(myLocalValueSetId);
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myLocalValueSetId)
 			.named("expand")
@@ -554,7 +575,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		createExternalCsAndLocalVs();
 		assertNotNull(myLocalValueSetId);
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myLocalValueSetId)
 			.named("expand")
@@ -574,7 +595,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	@Test
 	public void testExpandValueSetByBuiltInUrl() {
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -594,7 +615,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		createExternalCsAndLocalVs();
 		assertNotNull(myLocalValueSetId);
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("expand")
@@ -617,7 +638,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		assertNotNull(myLocalValueSetId);
 
 		try {
-			ourClient
+			myClient
 				.operation()
 				.onInstance(myLocalValueSetId)
 				.named("expand")
@@ -636,22 +657,22 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		cs.setContent(CodeSystemContentMode.COMPLETE);
 		cs.setUrl("http://foo1");
 		cs.addConcept().setCode("foo1").setDisplay("foo1");
-		ourClient.update().resource(cs).execute();
+		myClient.update().resource(cs).execute();
 
 		ValueSet vs = new ValueSet();
 		vs.setId("ValueSet/VS179789");
 		vs.setUrl("http://bar");
 		vs.getCompose().addInclude().setSystem("http://foo1").addConcept().setCode("foo1");
-		ourClient.update().resource(vs).execute();
+		myClient.update().resource(vs).execute();
 
-		ValueSet expanded = ourClient
+		ValueSet expanded = myClient
 			.operation()
 			.onInstance(new IdType("ValueSet/VS179789"))
 			.named("$expand")
 			.withNoParameters(Parameters.class)
 			.returnResourceType(ValueSet.class)
-				.execute();
-		ourLog.info("Expanded: {}",myFhirCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(expanded));
+			.execute();
+		ourLog.info("Expanded: {}", myFhirCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(expanded));
 		assertEquals(1, expanded.getExpansion().getContains().size());
 
 		// Update the CodeSystem URL and Codes
@@ -660,25 +681,24 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		cs.setContent(CodeSystemContentMode.COMPLETE);
 		cs.setUrl("http://foo2");
 		cs.addConcept().setCode("foo2").setDisplay("foo2");
-		ourClient.update().resource(cs).execute();
+		myClient.update().resource(cs).execute();
 
 		vs = new ValueSet();
 		vs.setId("ValueSet/VS179789");
 		vs.setUrl("http://bar");
 		vs.getCompose().addInclude().setSystem("http://foo2").addConcept().setCode("foo2");
-		ourClient.update().resource(vs).execute();
+		myClient.update().resource(vs).execute();
 
-		expanded = ourClient
+		expanded = myClient
 			.operation()
 			.onInstance(new IdType("ValueSet/VS179789"))
 			.named("$expand")
 			.withNoParameters(Parameters.class)
 			.returnResourceType(ValueSet.class)
 			.execute();
-		ourLog.info("Expanded: {}",myFhirCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(expanded));
+		ourLog.info("Expanded: {}", myFhirCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(expanded));
 		assertEquals(1, expanded.getExpansion().getContains().size());
 	}
-
 
 
 	/**
@@ -752,7 +772,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		ValueSet updatedValueSet = valueSet;
 		updatedValueSet.setName(valueSet.getName().concat(" - MODIFIED"));
 
-		String url = ourClient.getServerBase().concat("/").concat(myExtensionalVsId.getValueAsString());
+		String url = myClient.getServerBase().concat("/").concat(myExtensionalVsId.getValueAsString());
 		Bundle bundle = new Bundle();
 		bundle.setType(Bundle.BundleType.TRANSACTION);
 		bundle
@@ -763,7 +783,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 			.setMethod(Bundle.HTTPVerb.PUT)
 			.setUrl(url);
 		ourLog.info("Transaction Bundle:\n" + myFhirCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(bundle));
-		ourClient.transaction().withBundle(bundle).execute();
+		myClient.transaction().withBundle(bundle).execute();
 
 		updatedValueSet = myValueSetDao.read(myExtensionalVsId);
 		ourLog.info("Updated ValueSet:\n" + myFhirCtx.newJsonParser().setPrettyPrint(true).encodeResourceToString(updatedValueSet));
@@ -775,7 +795,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	}
 
 	private void validateTermValueSetNotExpanded(String theValueSetName) {
-		runInTransaction(()->{
+		runInTransaction(() -> {
 			Optional<TermValueSet> optionalValueSetByResourcePid = myTermValueSetDao.findByResourcePid(myExtensionalVsIdOnResourceTable);
 			assertTrue(optionalValueSetByResourcePid.isPresent());
 
@@ -793,7 +813,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	}
 
 	private void validateTermValueSetExpandedAndChildren(String theValueSetName, CodeSystem theCodeSystem) {
-		runInTransaction(()->{
+		runInTransaction(() -> {
 			Optional<TermValueSet> optionalValueSetByResourcePid = myTermValueSetDao.findByResourcePid(myExtensionalVsIdOnResourceTable);
 			assertTrue(optionalValueSetByResourcePid.isPresent());
 
@@ -869,7 +889,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	public void testValidateCodeOperationByCodeAndSystemInstance() throws Exception {
 		loadAndPersistCodeSystemAndValueSet();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onInstance(myExtensionalVsId)
 			.named("validate-code")
@@ -885,10 +905,11 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 	@Test
 	public void testValidateCodeOperationByCodeAndSystemInstanceOnType() throws IOException {
-		createLocalCsAndVs();
+		createLocalCs();
+		createLocalVsWithIncludeConcept();
 
 		String url = ourServerBase +
-			"/ValueSet/$validate-code?system=" +
+			"/ValueSet/" + myLocalValueSetId.getIdPart() + "/$validate-code?system=" +
 			UrlUtil.escapeUrlParam(URL_MY_CODE_SYSTEM) +
 			"&code=AA";
 
@@ -905,7 +926,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 	@Test
 	public void testValidateCodeOperationByCodeAndSystemInstanceOnInstance() throws IOException {
-		createLocalCsAndVs();
+		createLocalCs();
 		createLocalVsWithIncludeConcept();
 
 		String url = ourServerBase +
@@ -930,9 +951,9 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	public void testValidateCodeOperationByCodeAndSystemType() throws Exception {
 		loadAndPersistCodeSystemAndValueSet();
 
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
-			.onType(ValueSet.class)
+			.onInstance(myExtensionalVsId)
 			.named("validate-code")
 			.withParameter(Parameters.class, "code", new CodeType("8450-9"))
 			.andParameter("system", new UriType("http://acme.org"))
@@ -945,14 +966,32 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 	}
 
 	@Test
+	public void testValidateCodeOperationNoValueSetProvided() throws Exception {
+		loadAndPersistCodeSystemAndValueSet();
+
+		try {
+			myClient
+				.operation()
+				.onType(ValueSet.class)
+				.named("validate-code")
+				.withParameter(Parameters.class, "code", new CodeType("8450-9"))
+				.andParameter("system", new UriType("http://acme.org"))
+				.execute();
+			fail();
+		} catch (InvalidRequestException e) {
+			assertEquals("HTTP 400 Bad Request: Either ValueSet ID or ValueSet identifier or system and code must be provided. Unable to validate.", e.getMessage());
+		}
+	}
+
+	@Test
 	public void testValidateCodeAgainstBuiltInSystem() {
-		Parameters respParam = ourClient
+		Parameters respParam = myClient
 			.operation()
 			.onType(ValueSet.class)
 			.named("validate-code")
-			.withParameter(Parameters.class, "code", new StringType("Y"))
-			.andParameter("url", new StringType("http://hl7.org/fhir/ValueSet/yesnodontknow"))
-			.andParameter("system", new StringType("http://terminology.hl7.org/CodeSystem/v2-0136"))
+			.withParameter(Parameters.class, "code", new StringType("male"))
+			.andParameter("url", new StringType("http://hl7.org/fhir/ValueSet/administrative-gender"))
+			.andParameter("system", new StringType("http://hl7.org/fhir/administrative-gender"))
 			.useHttpGet()
 			.execute();
 
@@ -962,11 +1001,8 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		assertEquals("result", respParam.getParameter().get(0).getName());
 		assertEquals(true, ((BooleanType) respParam.getParameter().get(0).getValue()).getValue());
 
-		assertEquals("message", respParam.getParameter().get(1).getName());
-		assertThat(((StringType) respParam.getParameter().get(1).getValue()).getValue(), containsStringIgnoringCase("succeeded"));
-
-		assertEquals("display", respParam.getParameter().get(2).getName());
-		assertEquals("Yes", ((StringType) respParam.getParameter().get(2).getValue()).getValue());
+		assertEquals("display", respParam.getParameter().get(1).getName());
+		assertEquals("Male", ((StringType) respParam.getParameter().get(1).getValue()).getValue());
 	}
 
 	@Test
@@ -997,7 +1033,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 			ourLog.info("Response: {}", response);
 		}
 
-		HttpGet validateCodeGet = new HttpGet(ourServerBase + "/ValueSet/" + vsId.getIdPart() + "/$validate-code?code=ChildAA&_pretty=true");
+		HttpGet validateCodeGet = new HttpGet(ourServerBase + "/ValueSet/" + vsId.getIdPart() + "/$validate-code?system=http://mycs&code=ChildAA&_pretty=true");
 		try (CloseableHttpResponse status = ourHttpClient.execute(validateCodeGet)) {
 			String response = IOUtils.toString(status.getEntity().getContent(), Charsets.UTF_8);
 			ourLog.info("Response: {}", response);
@@ -1005,7 +1041,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 			assertEquals(true, output.getParameterBool("result"));
 		}
 
-		HttpGet validateCodeGet2 = new HttpGet(ourServerBase + "/ValueSet/" + vsId.getIdPart() + "/$validate-code?code=FOO&_pretty=true");
+		HttpGet validateCodeGet2 = new HttpGet(ourServerBase + "/ValueSet/" + vsId.getIdPart() + "/$validate-code?system=http://mycs&code=FOO&_pretty=true");
 		try (CloseableHttpResponse status = ourHttpClient.execute(validateCodeGet2)) {
 			String response = IOUtils.toString(status.getEntity().getContent(), Charsets.UTF_8);
 			ourLog.info("Response: {}", response);
@@ -1015,14 +1051,9 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 
 	}
 
-	@After
+	@AfterEach
 	public void afterResetPreExpansionDefault() {
 		myDaoConfig.setPreExpandValueSets(new DaoConfig().isPreExpandValueSets());
-	}
-
-	@AfterClass
-	public static void afterClassClearContext() {
-		TestUtil.clearAllStaticFieldsForUnitTest();
 	}
 
 	public static CodeSystem createExternalCs(IFhirResourceDao<CodeSystem> theCodeSystemDao, IResourceTableDao theResourceTableDao, ITermCodeSystemStorageSvc theTermCodeSystemStorageSvc, ServletRequestDetails theRequestDetails) {
@@ -1054,7 +1085,7 @@ public class ResourceProviderR4ValueSetTest extends BaseResourceProviderR4Test {
 		TermConcept parentB = new TermConcept(cs, "ParentB").setDisplay("Parent B");
 		cs.getConcepts().add(parentB);
 
-		theTermCodeSystemStorageSvc.storeNewCodeSystemVersion(new ResourcePersistentId(table.getId()), URL_MY_CODE_SYSTEM, "SYSTEM NAME", "SYSTEM VERSION" , cs, table);
+		theTermCodeSystemStorageSvc.storeNewCodeSystemVersion(new ResourcePersistentId(table.getId()), URL_MY_CODE_SYSTEM, "SYSTEM NAME", "SYSTEM VERSION", cs, table);
 		return codeSystem;
 	}
 

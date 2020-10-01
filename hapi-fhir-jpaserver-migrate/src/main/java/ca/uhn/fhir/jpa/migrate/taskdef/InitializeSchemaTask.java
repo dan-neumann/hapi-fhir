@@ -32,14 +32,17 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Set;
 
-public class InitializeSchemaTask extends BaseTask<InitializeSchemaTask> {
+public class InitializeSchemaTask extends BaseTask {
 	private static final Logger ourLog = LoggerFactory.getLogger(InitializeSchemaTask.class);
+	public static final String DESCRIPTION_PREFIX = "Initialize schema for ";
+
 	private final ISchemaInitializationProvider mySchemaInitializationProvider;
+	private boolean myInitializedSchema;
 
 	public InitializeSchemaTask(String theProductVersion, String theSchemaVersion, ISchemaInitializationProvider theSchemaInitializationProvider) {
 		super(theProductVersion, theSchemaVersion);
 		mySchemaInitializationProvider = theSchemaInitializationProvider;
-		setDescription("Initialize schema");
+		setDescription(DESCRIPTION_PREFIX + mySchemaInitializationProvider.getSchemaDescription());
 	}
 
 	@Override
@@ -58,17 +61,28 @@ public class InitializeSchemaTask extends BaseTask<InitializeSchemaTask> {
 			return;
 		}
 
-		logInfo(ourLog, "Initializing schema for {}", driverType);
+		logInfo(ourLog, "Initializing {} schema for {}", driverType, mySchemaInitializationProvider.getSchemaDescription());
 
 		List<String> sqlStatements = mySchemaInitializationProvider.getSqlStatements(driverType);
 
 		for (String nextSql : sqlStatements) {
 			executeSql(null, nextSql);
 		}
+
+		if (mySchemaInitializationProvider.canInitializeSchema()) {
+			myInitializedSchema = true;
+		}
+
+		logInfo(ourLog, "{} schema for {} initialized successfully", driverType, mySchemaInitializationProvider.getSchemaDescription());
 	}
 
 	@Override
-	protected void generateEquals(EqualsBuilder theBuilder, BaseTask<InitializeSchemaTask> theOtherObject) {
+	public boolean initializedSchema() {
+		return myInitializedSchema;
+	}
+
+	@Override
+	protected void generateEquals(EqualsBuilder theBuilder, BaseTask theOtherObject) {
 		InitializeSchemaTask otherObject = (InitializeSchemaTask) theOtherObject;
 		theBuilder.append(mySchemaInitializationProvider, otherObject.mySchemaInitializationProvider);
 	}
@@ -76,5 +90,9 @@ public class InitializeSchemaTask extends BaseTask<InitializeSchemaTask> {
 	@Override
 	protected void generateHashCode(HashCodeBuilder theBuilder) {
 		theBuilder.append(mySchemaInitializationProvider);
+	}
+
+	public ISchemaInitializationProvider getSchemaInitializationProvider() {
+		return mySchemaInitializationProvider;
 	}
 }
