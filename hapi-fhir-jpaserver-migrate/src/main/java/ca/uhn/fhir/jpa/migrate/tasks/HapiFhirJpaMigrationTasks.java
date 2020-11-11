@@ -23,6 +23,7 @@ package ca.uhn.fhir.jpa.migrate.tasks;
 import ca.uhn.fhir.jpa.entity.EmpiLink;
 import ca.uhn.fhir.jpa.migrate.DriverTypeEnum;
 import ca.uhn.fhir.jpa.migrate.taskdef.ArbitrarySqlTask;
+import ca.uhn.fhir.jpa.migrate.taskdef.BaseTableColumnTypeTask;
 import ca.uhn.fhir.jpa.migrate.taskdef.CalculateHashesTask;
 import ca.uhn.fhir.jpa.migrate.taskdef.CalculateOrdinalDatesTask;
 import ca.uhn.fhir.jpa.migrate.taskdef.ColumnTypeEnum;
@@ -333,7 +334,6 @@ public class HapiFhirJpaMigrationTasks extends BaseMigrationTasks<VersionEnum> {
 		// TermValueSetConceptDesignation
 		version.startSectionWithMessage("Processing table: TRM_VALUESET_C_DESIGNATION");
 		version.onTable("TRM_VALUESET_C_DESIGNATION").dropIndex("20200202.1", "IDX_VALUESET_C_DSGNTN_VAL").failureAllowed();
-		version.onTable("TRM_VALUESET_C_DESIGNATION").modifyColumn("20200202.2", "VAL").nonNullable().withType(BaseTableColumnTypeTask.ColumnTypeEnum.STRING, 2000); // TODO: Restore proper size as Index is gone now
 		Builder.BuilderWithTableName searchTable = version.onTable("HFJ_SEARCH");
 		searchTable.dropIndex("20200203.1", "IDX_SEARCH_LASTRETURNED");
 		searchTable.dropColumn("20200203.2", "SEARCH_LAST_RETURNED");

@@ -99,8 +99,10 @@ public class ModifyColumnTask extends BaseTableColumnTypeTask {
 				break;
 			case MARIADB_10_1:
 			case MYSQL_5_7:
-			case MYSQL_8_0:
 				sql = "alter table " + getTableName() + " modify column `" + getColumnName() + "` " + type + notNull;
+				break;
+			case MYSQL_8_0:
+				sql = "alter table " + getTableName() + " modify " + getColumnName() + " " + type + notNull;
 				break;
 			case POSTGRES_9_4:
 				if (!alreadyOfCorrectType) {

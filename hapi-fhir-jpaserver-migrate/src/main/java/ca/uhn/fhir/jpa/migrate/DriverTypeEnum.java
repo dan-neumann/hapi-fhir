@@ -82,6 +82,7 @@ public enum DriverTypeEnum {
 				retval = "derbytenseven.sql";
 				break;
 			case MYSQL_5_7:
+			case MYSQL_8_0:
 			case MARIADB_10_1:
 				retval = "mysql57.sql";
 				break;
